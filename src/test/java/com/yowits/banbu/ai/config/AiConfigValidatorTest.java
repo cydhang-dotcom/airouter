@@ -13,9 +13,9 @@ class AiConfigValidatorTest {
     @Test
     void validate_acceptsKnownAliasesInRoutesAndChains() {
         AiRoutingProperties routing = new AiRoutingProperties();
-        routing.setDefaultModel("kimi-main:moonshot-v1-8k");
-        routing.setRoutes(Map.of("CONTRACT_SUMMARY", "kimi-main:moonshot-v1-8k"));
-        routing.setChains(Map.of("CUSTOMER_FOLLOWUP", List.of("glm-main:glm-4", "kimi-main:moonshot-v1-8k")));
+        routing.setDefaultModel("kimi-main:kimi-k2.5");
+        routing.setRoutes(Map.of("CONTRACT_SUMMARY", "kimi-main:kimi-k2.5"));
+        routing.setChains(Map.of("CUSTOMER_FOLLOWUP", List.of("glm-main:glm-4", "kimi-main:kimi-k2.5")));
 
         ProvidersProperties providers = new ProvidersProperties();
         ProvidersProperties.OpenAiCompat kimi = new ProvidersProperties.OpenAiCompat();
@@ -35,7 +35,7 @@ class AiConfigValidatorTest {
     @Test
     void validate_rejectsUnknownAlias() {
         AiRoutingProperties routing = new AiRoutingProperties();
-        routing.setDefaultModel("kimi-main:moonshot-v1-8k");
+        routing.setDefaultModel("kimi-main:kimi-k2.5");
         routing.setRoutes(Map.of("CONTRACT_SUMMARY", "missing:model"));
 
         ProvidersProperties providers = new ProvidersProperties();

@@ -182,12 +182,15 @@ public class AiChatService {
         if (type == null || type.equals("openai-compat")) {
             var b = OpenAiChatOptions.builder().withModel(model);
             if (req.getOptions() != null) {
-                Object temp = req.getOptions().get("temperature");
-                if (temp instanceof Number n) b = b.withTemperature(n.floatValue());
-                Object topP = req.getOptions().get("topP");
-                if (topP instanceof Number n) b = b.withTopP(n.floatValue());
                 Object maxTokens = req.getOptions().get("maxTokens");
                 if (maxTokens instanceof Number n) b = b.withMaxTokens(n.intValue());
+                // Moonshot kimi-k2.5 rejects custom sampling params; keep only safe fields.
+                if (!isKimi25Model(model)) {
+                    Object temp = req.getOptions().get("temperature");
+                    if (temp instanceof Number n) b = b.withTemperature(n.floatValue());
+                    Object topP = req.getOptions().get("topP");
+                    if (topP instanceof Number n) b = b.withTopP(n.floatValue());
+                }
             }
             return b.build();
         }
@@ -195,5 +198,7 @@ public class AiChatService {
         return null;
     }
 
-    
+    private boolean isKimi25Model(String model) {
+        return model != null && model.toLowerCase().contains("kimi-k2.5");
+    }
 }

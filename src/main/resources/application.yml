@@ -15,23 +15,23 @@ spring:
 ai:
   # 推荐优先使用 chains 配置主备链；routes 保留作为兼容的主路由简写。
   # 路由格式：alias:model。alias 对应 providers.clients 下的别名。
-  default-model: kimi-main:kimi-k2-turbo-preview
+  default-model: kimi-main:kimi-k2.5
   routes:
-    CONTRACT_SUMMARY: kimi-main:kimi-k2-turbo-preview
-    CUSTOMER_FOLLOWUP: kimi-main:kimi-k2-turbo-preview
-    COMPANY_REGISTRATION_PLAN: kimi-main:kimi-k2-turbo-preview
-    BUSINESS_SCOPE_ANALYSIS: kimi-main:kimi-k2-turbo-preview
+    CONTRACT_SUMMARY: kimi-main:kimi-k2.5
+    CUSTOMER_FOLLOWUP: kimi-main:kimi-k2.5
+    COMPANY_REGISTRATION_PLAN: kimi-main:kimi-k2.5
+    BUSINESS_SCOPE_ANALYSIS: kimi-main:kimi-k2.5
   # 推荐配置：主备链（优先级从前到后），当首选失败自动切换。
   chains:
     CONTRACT_SUMMARY:
-      - kimi-main:kimi-k2-turbo-preview
+      - kimi-main:kimi-k2.5
     CUSTOMER_FOLLOWUP:
-      - kimi-main:kimi-k2-turbo-preview
+      - kimi-main:kimi-k2.5
       - glm-main:glm-4
     COMPANY_REGISTRATION_PLAN:
-      - kimi-main:kimi-k2-turbo-preview
+      - kimi-main:kimi-k2.5
     BUSINESS_SCOPE_ANALYSIS:
-      - kimi-main:kimi-k2-turbo-preview
+      - kimi-main:kimi-k2.5
 
   policy:
     default-policy:
@@ -40,13 +40,13 @@ ai:
       per-route-max-attempts: 1
     scenes:
       CONTRACT_SUMMARY:
-        timeout-ms: 45000
+        timeout-ms: 120000
       CUSTOMER_FOLLOWUP:
-        timeout-ms: 20000
+        timeout-ms: 120000
       COMPANY_REGISTRATION_PLAN:
-        timeout-ms: 45000
+        timeout-ms: 120000
       BUSINESS_SCOPE_ANALYSIS:
-        timeout-ms: 20000
+        timeout-ms: 120000
     tenants:
       t001:
         default-policy:
@@ -84,7 +84,7 @@ resilience4j:
   timelimiter:
     instances:
       ai:
-        timeoutDuration: 30s
+        timeoutDuration: 120s
   retry:
     instances:
       ai:

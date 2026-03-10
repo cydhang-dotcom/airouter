@@ -16,7 +16,7 @@ public class ModelRouter {
         if (sceneCode == null || sceneCode.isBlank()) value = props.getDefaultModel();
         else value = props.getRoutes().getOrDefault(sceneCode, props.getDefaultModel());
 
-        // format: alias:model  e.g., kimi-main:moonshot-v1-8k
+        // format: alias:model  e.g., kimi-main:kimi-k2.5
         if (value != null && value.contains(":")) {
             String[] parts = value.split(":", 2);
             return new Route(parts[0], parts[1]);

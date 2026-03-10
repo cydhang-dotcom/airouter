@@ -45,14 +45,14 @@ providers:
 
 ```yaml
 ai:
-  default-model: kimi-main:moonshot-v1-8k
+  default-model: kimi-main:kimi-k2.5
   chains:
     CONTRACT_SUMMARY:
-      - kimi-main:moonshot-v1-8k
+      - kimi-main:kimi-k2.5
       - glm-main:glm-4
     CUSTOMER_FOLLOWUP:
       - glm-main:glm-4
-      - kimi-main:moonshot-v1-8k
+      - kimi-main:kimi-k2.5
 ```
 
 含义：
@@ -64,7 +64,7 @@ ai:
 ```yaml
 ai:
   routes:
-    CONTRACT_SUMMARY: kimi-main:moonshot-v1-8k
+    CONTRACT_SUMMARY: kimi-main:kimi-k2.5
     CUSTOMER_FOLLOWUP: glm-main:glm-4
 ```
 
@@ -133,10 +133,10 @@ ai:
 
 ```yaml
 ai:
-  default-model: kimi-main:moonshot-v1-8k
+  default-model: kimi-main:kimi-k2.5
   chains:
     CONTRACT_SUMMARY:
-      - kimi-main:moonshot-v1-8k
+      - kimi-main:kimi-k2.5
       - glm-main:glm-4
   policy:
     default-policy:
