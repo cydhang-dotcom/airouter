@@ -57,7 +57,7 @@ public class AiChatService {
                     var opts = buildOptions(route.alias(), model, req);
                     if (opts != null) builder = builder.options(opts);
                     if ("json".equalsIgnoreCase(req.getResponseFormat()) && req.getResponseSchema() != null && !req.getResponseSchema().isEmpty()) {
-                        builder.system("请严格按以下JSON Schema返回结果，不要包含多余文字：" + objectToString(req.getResponseSchema()));
+                        builder.system("请严格按以下JSON Schema返回结果，不要包含多余文字：" + escapePromptTemplate(objectToString(req.getResponseSchema())));
                     }
                     for (ChatMessage m : req.getMessages()) {
                         String role = m.getRole().toLowerCase();
@@ -100,7 +100,7 @@ public class AiChatService {
         var opts = buildOptions(route.alias(), model, req);
         if (opts != null) builder = builder.options(opts);
         if ("json".equalsIgnoreCase(req.getResponseFormat()) && req.getResponseSchema() != null && !req.getResponseSchema().isEmpty()) {
-            builder.system("请严格按以下JSON Schema返回结果，不要包含多余文字：" + objectToString(req.getResponseSchema()));
+            builder.system("请严格按以下JSON Schema返回结果，不要包含多余文字：" + escapePromptTemplate(objectToString(req.getResponseSchema())));
         }
         for (ChatMessage m : req.getMessages()) {
             String role = m.getRole().toLowerCase();
@@ -124,6 +124,10 @@ public class AiChatService {
 
     private String objectToString(Object o) {
         try { return objectMapper.writeValueAsString(o); } catch (Exception e) { return String.valueOf(o); }
+    }
+
+    private String escapePromptTemplate(String s) {
+        return s.replace("{", "\\{").replace("}", "\\}");
     }
 
     private ChatClient selectClient(String alias) {
