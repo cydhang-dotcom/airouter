@@ -1,16 +1,20 @@
 package com.yowits.banbu.ai.config;
 
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
 
 @Component
+@Validated
 @ConfigurationProperties(prefix = "ai")
 public class AiRoutingProperties {
 
     /** Default model id if scene mapping not found */
+    @NotBlank
     private String defaultModel = "gpt-4o-mini";
 
     /** sceneCode -> modelId mapping */

@@ -1,17 +1,23 @@
 package com.yowits.banbu.ai.config;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.HashMap;
 import java.util.Map;
 
 @Component
+@Validated
 @ConfigurationProperties(prefix = "ai.guard")
 public class AiGuardProperties {
 
     private boolean enabled = true;
+    @Min(1)
     private int defaultRequestsPerMinute = 120;
+    @Valid
     private Map<String, TenantGuardPolicy> tenants = new HashMap<>();
 
     public boolean isEnabled() {
@@ -47,6 +53,7 @@ public class AiGuardProperties {
     }
 
     public static class TenantGuardPolicy {
+        @Min(1)
         private int requestsPerMinute;
 
         public int getRequestsPerMinute() {

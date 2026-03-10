@@ -1,17 +1,24 @@
 package com.yowits.banbu.ai.config;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.HashMap;
 import java.util.Map;
 
 @Component
+@Validated
 @ConfigurationProperties(prefix = "ai.policy")
 public class AiPolicyProperties {
 
+    @Valid
     private Policy defaultPolicy = new Policy();
+    @Valid
     private Map<String, Policy> scenes = new HashMap<>();
+    @Valid
     private Map<String, TenantPolicy> tenants = new HashMap<>();
 
     public Policy getDefaultPolicy() { return defaultPolicy; }
@@ -36,7 +43,9 @@ public class AiPolicyProperties {
 
     public static class Policy {
         private boolean allowFallback = true;
+        @Min(1)
         private int timeoutMs = 30000;
+        @Min(1)
         private int perRouteMaxAttempts = 1; // 每条链路的最大尝试次数
 
         public boolean isAllowFallback() { return allowFallback; }
@@ -48,7 +57,9 @@ public class AiPolicyProperties {
     }
 
     public static class TenantPolicy {
+        @Valid
         private Policy defaultPolicy = new Policy();
+        @Valid
         private Map<String, Policy> scenes = new HashMap<>();
 
         public Policy getDefaultPolicy() { return defaultPolicy; }

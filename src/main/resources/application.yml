@@ -13,44 +13,54 @@ spring:
       base-url: ${OPENAI_BASE_URL:${openai.base.url:https://api.moonshot.cn}}
 
 ai:
-  # 路由：alias:model。alias 对应 providers.clients 下的别名，可自由增加多个 Kimi/GLM/Qwen 账号或环境。
+  # 推荐优先使用 chains 配置主备链；routes 保留作为兼容的主路由简写。
+  # 路由格式：alias:model。alias 对应 providers.clients 下的别名。
   default-model: kimi-main:moonshot-v1-8k
   routes:
     CONTRACT_SUMMARY: kimi-main:moonshot-v1-8k
     CUSTOMER_FOLLOWUP: glm-main:glm-4
-  # 可选：主备链（优先级从前到后），当首选失败自动切换
+  # 推荐配置：主备链（优先级从前到后），当首选失败自动切换。
   chains:
+    CONTRACT_SUMMARY:
+      - kimi-main:moonshot-v1-8k
     CUSTOMER_FOLLOWUP:
       - glm-main:glm-4
       - kimi-main:moonshot-v1-8k
 
   policy:
     default-policy:
-      allowFallback: true
-      timeoutMs: 30000
-      perRouteMaxAttempts: 1
+      allow-fallback: true
+      timeout-ms: 30000
+      per-route-max-attempts: 1
     scenes:
       CONTRACT_SUMMARY:
-        timeoutMs: 45000
+        timeout-ms: 45000
       CUSTOMER_FOLLOWUP:
-        timeoutMs: 20000
+        timeout-ms: 20000
     tenants:
       t001:
-        defaultPolicy:
-          timeoutMs: 25000
+        default-policy:
+          timeout-ms: 25000
         scenes:
           CUSTOMER_FOLLOWUP:
-            timeoutMs: 15000
+            timeout-ms: 15000
+
+  guard:
+    enabled: true
+    default-requests-per-minute: 120
 
 providers:
   clients:
     kimi-main:
+      type: openai-compat
       base-url: ${OPENAI_KIMI_BASE_URL:${OPENAI_BASE_URL:${openai.base.url:https://api.moonshot.cn}}}
       api-key: ${OPENAI_KIMI_API_KEY:${OPENAI_COMPAT_API_KEY:${openai.api.key:}}}
     kimi-256k:
+      type: openai-compat
       base-url: ${OPENAI_KIMI_BASE_URL:${OPENAI_BASE_URL:${openai.base.url:https://api.moonshot.cn}}}
       api-key: ${OPENAI_KIMI_API_KEY:${OPENAI_COMPAT_API_KEY:${openai.api.key:}}}
     glm-main:
+      type: openai-compat
       base-url: ${OPENAI_GLM_BASE_URL:${openai.glm.base.url:https://open.bigmodel.cn/api/paas}}
       api-key: ${OPENAI_GLM_API_KEY:${openai.glm.api.key:}}
 

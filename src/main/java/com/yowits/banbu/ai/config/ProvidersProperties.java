@@ -1,12 +1,16 @@
 package com.yowits.banbu.ai.config;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Component
+@Validated
 @ConfigurationProperties(prefix = "providers")
 public class ProvidersProperties {
 
@@ -14,6 +18,7 @@ public class ProvidersProperties {
      * 动态定义多个客户端别名（如 kimi-main、kimi-256k、glm-main）。
      * key = 别名；value = OpenAI 兼容配置（baseUrl + apiKey）。
      */
+    @Valid
     private Map<String, OpenAiCompat> clients = new LinkedHashMap<>();
 
     public Map<String, OpenAiCompat> getClients() { return clients; }
