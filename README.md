@@ -8,6 +8,7 @@
 - 多别名配置：`providers.clients.<alias>` 定义多套账号/环境，路由可指向 `alias:model`。
 - 路由与降级：`ai.routes` 首选路由，`ai.chains` 主备链（非流式按链路自动切换）。
 - 策略引擎：`ai.policy` 支持全局/scene/tenant 三级覆盖（timeoutMs、perRouteMaxAttempts、allowFallback）。
+- 租户保护：`ai.guard` 支持租户级基础限流（每分钟请求数）。
 - 结构化输出：支持 `responseFormat=json` 与 `responseSchema` 提示；自动剥离围栏并解析 JSON。
 - OpenAPI 文档：集成 springdoc（`/swagger-ui.html`）。
 - 观测与日志：Actuator、Prometheus（可接入），关键日志 `ai_call`、`route_failed`。
@@ -57,6 +58,12 @@ ai:
     CUSTOMER_FOLLOWUP: glm-main:glm-4
   chains:
     CUSTOMER_FOLLOWUP: ["glm-main:glm-4","kimi-main:moonshot-v1-8k"]
+  guard:
+    enabled: true
+    default-requests-per-minute: 120
+    tenants:
+      vip-tenant:
+        requests-per-minute: 300
 spring:
   ai:
     openai:
@@ -143,6 +150,25 @@ POST /ai/chat
 }
 ```
 
+错误响应统一为：
+```json
+{
+  "timestamp":"2026-03-10T11:00:00Z",
+  "path":"/ai/chat",
+  "status":429,
+  "error":"Too Many Requests",
+  "code":"AI_RATE_LIMITED",
+  "message":"Tenant rate limit exceeded for tenantId=t001",
+  "requestId":"xxx"
+}
+```
+
+常见错误码：
+- `INVALID_REQUEST`：参数校验失败，或 `/ai/chat` 误传 `stream=true`
+- `AI_RATE_LIMITED`：租户超过每分钟请求阈值
+- `AI_UNAVAILABLE`：路由不可用或 provider 全部失败
+- `AI_TIMEOUT`：AI 调用超时
+
 ## Java 调用（Spring 推荐）
 - 定义客户端（RestClient 阻塞；WebClient 流式）
 ```java
@@ -187,13 +213,16 @@ public interface AiFeignClient {
 
 ## 安全与运维
 - 切勿提交密钥到仓库；统一使用环境变量或密管（Vault/KMS）。
+- 一期建议至少配置 `ai.guard` 做租户级基础限流；单实例模式适合试点，多实例建议后续替换为 Redis/网关侧限流。
 - 建议配置限流与配额（按 tenant/scene）；开启访问与调用审计（日志中包含 tenant/scene/model）。
 - 观测：Prometheus 指标、OpenTelemetry Trace（可选），按 scene/tenant 维度出图看板。
 
 ## 故障排查
-- 400：流式请求请调用 `/ai/chat/stream`；或校验必填字段。
+- 400 / `INVALID_REQUEST`：流式请求请调用 `/ai/chat/stream`；或校验必填字段。
+- 429 / `AI_RATE_LIMITED`：检查 `ai.guard` 的租户限流配置，或由业务侧做退避重试。
 - 404 模型：检查 `ai.routes` 的 alias:model 与对应 providers.clients 的 baseUrl/apiKey。
-- 5xx：查看服务日志中的 `route_failed` 与 `ai_call` 记录，确认是否降级到备线；适当提高 `timeoutMs` 或 `perRouteMaxAttempts`。
+- 503 / `AI_UNAVAILABLE`：查看 `route_failed` 与 `ai_call`，确认主备链是否已耗尽。
+- 504 / `AI_TIMEOUT`：适当提高 `timeoutMs` 或缩短上游模型响应内容。
 
 ## 测试与验证
 - 单元与 E2E 测试：`mvn test`（不依赖外网，使用 Stub/Mock）

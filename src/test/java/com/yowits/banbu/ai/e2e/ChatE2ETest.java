@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yowits.banbu.ai.AiServiceApplication;
 import com.yowits.banbu.ai.api.dto.ChatMessage;
 import com.yowits.banbu.ai.api.dto.ChatRequest;
+import com.yowits.banbu.ai.service.TenantGuardService;
 import com.yowits.banbu.ai.service.AiChatService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,8 @@ import java.util.function.Function;
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = {
         // avoid real OpenAI autoconfig in tests
-        "spring.autoconfigure.exclude=org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration"
+        "spring.autoconfigure.exclude=org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration",
+        "ai.guard.default-requests-per-minute=2"
     }
 )
 @AutoConfigureWebTestClient
@@ -70,9 +72,13 @@ class ChatE2ETest {
     @Autowired
     private StubAiChatService stubAiChatService;
 
+    @Autowired
+    private TenantGuardService tenantGuardService;
+
     @BeforeEach
     void resetStub() {
         stubAiChatService.reset();
+        tenantGuardService.reset();
     }
 
     @Test
@@ -122,7 +128,9 @@ class ChatE2ETest {
             .contentType(MediaType.APPLICATION_JSON)
             .bodyValue(req)
             .exchange()
-            .expectStatus().isBadRequest();
+            .expectStatus().isBadRequest()
+            .expectBody()
+            .jsonPath("$.code").isEqualTo("INVALID_REQUEST");
     }
 
     @Test
@@ -133,7 +141,10 @@ class ChatE2ETest {
             .contentType(MediaType.APPLICATION_JSON)
             .bodyValue(baseRequest(false))
             .exchange()
-            .expectStatus().is5xxServerError();
+            .expectStatus().isEqualTo(503)
+            .expectBody()
+            .jsonPath("$.code").isEqualTo("AI_UNAVAILABLE")
+            .jsonPath("$.message").isEqualTo("stub-failure");
     }
 
     @Test
@@ -201,7 +212,32 @@ class ChatE2ETest {
             .contentType(MediaType.APPLICATION_JSON)
             .bodyValue(req)
             .exchange()
-            .expectStatus().isBadRequest();
+            .expectStatus().isBadRequest()
+            .expectBody()
+            .jsonPath("$.code").isEqualTo("INVALID_REQUEST");
+    }
+
+    @Test
+    void e2e_chat_rate_limits_by_tenant() {
+        webTestClient.post().uri("/ai/chat")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(baseRequest(false))
+            .exchange()
+            .expectStatus().isOk();
+
+        webTestClient.post().uri("/ai/chat")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(baseRequest(false))
+            .exchange()
+            .expectStatus().isOk();
+
+        webTestClient.post().uri("/ai/chat")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(baseRequest(false))
+            .exchange()
+            .expectStatus().isEqualTo(429)
+            .expectBody()
+            .jsonPath("$.code").isEqualTo("AI_RATE_LIMITED");
     }
 
     private static ChatRequest baseRequest(boolean stream) {

@@ -1,11 +1,13 @@
 package com.yowits.banbu.ai.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yowits.banbu.ai.config.AiGuardProperties;
 import com.yowits.banbu.ai.api.dto.ChatMessage;
 import com.yowits.banbu.ai.api.dto.ChatRequest;
 import com.yowits.banbu.ai.config.AiRoutingProperties;
 import com.yowits.banbu.ai.router.ModelRouter;
 import com.yowits.banbu.ai.service.AiChatService;
+import com.yowits.banbu.ai.service.TenantGuardService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -23,7 +25,9 @@ class ChatControllerUnitTest {
         }
         @Override
         public CompletableFuture<org.springframework.ai.chat.model.ChatResponse> chat(ChatRequest req) {
-            throw new UnsupportedOperationException("not used in this unit test");
+            var metadata = org.springframework.ai.chat.metadata.ChatResponseMetadata.builder().withModel("stub-model").build();
+            var response = new org.springframework.ai.chat.model.ChatResponse(List.of(new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage("stub-text"))), metadata);
+            return CompletableFuture.completedFuture(response);
         }
         @Override
         public Flux<String> chatStream(ChatRequest req) {
@@ -33,8 +37,8 @@ class ChatControllerUnitTest {
 
     @Test
     void chat_withStreamFlag_returnsBadRequest() {
-        ChatController controller = new ChatController(new StubAiChatService(), new ObjectMapper());
-        WebTestClient client = WebTestClient.bindToController(controller).build();
+        ChatController controller = new ChatController(new StubAiChatService(), new ObjectMapper(), new TenantGuardService(new AiGuardProperties()));
+        WebTestClient client = WebTestClient.bindToController(controller).controllerAdvice(new GlobalExceptionHandler()).build();
 
         ChatRequest req = new ChatRequest();
         req.setScene("CONTRACT_SUMMARY");
@@ -48,15 +52,16 @@ class ChatControllerUnitTest {
             .bodyValue(req)
             .exchange()
             .expectStatus().isBadRequest()
-            .expectBody(String.class)
-            .value(body -> org.assertj.core.api.Assertions.assertThat(body)
+            .expectBody()
+            .jsonPath("$.code").isEqualTo("INVALID_REQUEST")
+            .jsonPath("$.message").value(body -> org.assertj.core.api.Assertions.assertThat(body.toString())
                     .contains("Use /ai/chat/stream"));
     }
 
     @Test
     void chatStream_returnsSSE() {
-        ChatController controller = new ChatController(new StubAiChatService(), new ObjectMapper());
-        WebTestClient client = WebTestClient.bindToController(controller).build();
+        ChatController controller = new ChatController(new StubAiChatService(), new ObjectMapper(), new TenantGuardService(new AiGuardProperties()));
+        WebTestClient client = WebTestClient.bindToController(controller).controllerAdvice(new GlobalExceptionHandler()).build();
 
         ChatRequest req = new ChatRequest();
         req.setScene("CONTRACT_SUMMARY");
@@ -79,5 +84,33 @@ class ChatControllerUnitTest {
                 org.assertj.core.api.Assertions.assertThat(body).contains("data:world");
                 org.assertj.core.api.Assertions.assertThat(body).contains("event:done");
             });
+    }
+
+    @Test
+    void chat_whenTenantHitsRateLimit_returnsTooManyRequests() {
+        AiGuardProperties props = new AiGuardProperties();
+        props.setDefaultRequestsPerMinute(1);
+        ChatController controller = new ChatController(new StubAiChatService(), new ObjectMapper(), new TenantGuardService(props));
+        WebTestClient client = WebTestClient.bindToController(controller).controllerAdvice(new GlobalExceptionHandler()).build();
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("CONTRACT_SUMMARY");
+        req.setTenantId("t001");
+        req.setUserId("u123");
+        req.setMessages(List.of(new ChatMessage("user", "hello")));
+
+        client.post().uri("/ai/chat")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(req)
+            .exchange()
+            .expectStatus().isOk();
+
+        client.post().uri("/ai/chat")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(req)
+            .exchange()
+            .expectStatus().isEqualTo(429)
+            .expectBody()
+            .jsonPath("$.code").isEqualTo("AI_RATE_LIMITED");
     }
 }

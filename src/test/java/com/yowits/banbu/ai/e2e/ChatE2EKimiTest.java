@@ -117,8 +117,9 @@ class ChatE2EKimiTest {
             .bodyValue(req)
             .exchange()
             .expectStatus().isBadRequest()
-            .expectBody(String.class)
-            .value(body -> org.assertj.core.api.Assertions.assertThat(body).contains("/ai/chat/stream"));
+            .expectBody()
+            .jsonPath("$.code").isEqualTo("INVALID_REQUEST")
+            .jsonPath("$.message").value(body -> org.assertj.core.api.Assertions.assertThat(body.toString()).contains("/ai/chat/stream"));
     }
 
     @Test
@@ -130,7 +131,9 @@ class ChatE2EKimiTest {
             .contentType(MediaType.APPLICATION_JSON)
             .bodyValue(req)
             .exchange()
-            .expectStatus().isBadRequest();
+            .expectStatus().isBadRequest()
+            .expectBody()
+            .jsonPath("$.code").isEqualTo("INVALID_REQUEST");
     }
 
     private static ChatRequest baseRequest(boolean stream, String prompt) {

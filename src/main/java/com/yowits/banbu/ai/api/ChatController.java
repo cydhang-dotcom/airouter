@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yowits.banbu.ai.api.dto.ChatRequest;
 import com.yowits.banbu.ai.api.dto.ChatResponsePayload;
 import com.yowits.banbu.ai.service.AiChatService;
+import com.yowits.banbu.ai.service.InvalidChatRequestException;
+import com.yowits.banbu.ai.service.TenantGuardService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -24,18 +26,21 @@ public class ChatController {
 
     private final AiChatService chatService;
     private final ObjectMapper objectMapper;
+    private final TenantGuardService tenantGuardService;
 
-    public ChatController(AiChatService chatService, ObjectMapper objectMapper) {
+    public ChatController(AiChatService chatService, ObjectMapper objectMapper, TenantGuardService tenantGuardService) {
         this.chatService = chatService;
         this.objectMapper = objectMapper;
+        this.tenantGuardService = tenantGuardService;
     }
 
     @PostMapping(value = "/chat", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "非流式聊天：支持结构化JSON输出、场景路由与降级")
     public ResponseEntity<?> chat(@Valid @RequestBody ChatRequest req) {
         if (req.isStream()) {
-            return ResponseEntity.badRequest().body("Use /ai/chat/stream for streaming");
+            throw new InvalidChatRequestException("Use /ai/chat/stream for streaming");
         }
+        tenantGuardService.checkTenant(req.getTenantId());
         ChatResponse response = chatService.chat(req).join();
         Object payload = response.getResult().getOutput().getContent();
         String model = response.getMetadata().getModel();
@@ -54,6 +59,7 @@ public class ChatController {
     @PostMapping(value = "/chat/stream", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @Operation(summary = "SSE 流式聊天：按场景首选路由输出")
     public Flux<ServerSentEvent<String>> chatStream(@Valid @RequestBody ChatRequest req) {
+        tenantGuardService.checkTenant(req.getTenantId());
         Flux<String> flux = chatService.chatStream(req);
         return flux.map(token -> ServerSentEvent.builder(token).event("message").build())
                    .concatWith(Flux.just(ServerSentEvent.builder("[DONE]").event("done").build()))

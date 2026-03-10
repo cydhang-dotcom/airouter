@@ -2,6 +2,8 @@ package com.yowits.banbu.ai.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yowits.banbu.ai.config.AiGuardProperties;
+import com.yowits.banbu.ai.service.TenantGuardService;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -12,7 +14,7 @@ class ChatControllerJsonUtilTest {
 
     @Test
     void stripFence_and_tryParseJson_work() throws Exception {
-        ChatController controller = new ChatController(null, new ObjectMapper());
+        ChatController controller = new ChatController(null, new ObjectMapper(), new TenantGuardService(new AiGuardProperties()));
 
         String fenced = "```json\n{\n  \"summary\": \"ok\",\n  \"riskLevel\": \"LOW\"\n}\n```";
 
@@ -28,4 +30,3 @@ class ChatControllerJsonUtilTest {
         assertThat(node.get("riskLevel").asText()).isEqualTo("LOW");
     }
 }
-
