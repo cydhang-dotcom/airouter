@@ -15,17 +15,23 @@ spring:
 ai:
   # 推荐优先使用 chains 配置主备链；routes 保留作为兼容的主路由简写。
   # 路由格式：alias:model。alias 对应 providers.clients 下的别名。
-  default-model: kimi-main:moonshot-v1-8k
+  default-model: kimi-main:kimi-k2-turbo-preview
   routes:
-    CONTRACT_SUMMARY: kimi-main:moonshot-v1-8k
-    CUSTOMER_FOLLOWUP: glm-main:glm-4
+    CONTRACT_SUMMARY: kimi-main:kimi-k2-turbo-preview
+    CUSTOMER_FOLLOWUP: kimi-main:kimi-k2-turbo-preview
+    COMPANY_REGISTRATION_PLAN: kimi-main:kimi-k2-turbo-preview
+    BUSINESS_SCOPE_ANALYSIS: kimi-main:kimi-k2-turbo-preview
   # 推荐配置：主备链（优先级从前到后），当首选失败自动切换。
   chains:
     CONTRACT_SUMMARY:
-      - kimi-main:moonshot-v1-8k
+      - kimi-main:kimi-k2-turbo-preview
     CUSTOMER_FOLLOWUP:
+      - kimi-main:kimi-k2-turbo-preview
       - glm-main:glm-4
-      - kimi-main:moonshot-v1-8k
+    COMPANY_REGISTRATION_PLAN:
+      - kimi-main:kimi-k2-turbo-preview
+    BUSINESS_SCOPE_ANALYSIS:
+      - kimi-main:kimi-k2-turbo-preview
 
   policy:
     default-policy:
@@ -36,6 +42,10 @@ ai:
       CONTRACT_SUMMARY:
         timeout-ms: 45000
       CUSTOMER_FOLLOWUP:
+        timeout-ms: 20000
+      COMPANY_REGISTRATION_PLAN:
+        timeout-ms: 45000
+      BUSINESS_SCOPE_ANALYSIS:
         timeout-ms: 20000
     tenants:
       t001:

@@ -11,6 +11,7 @@ import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.metadata.Usage;
 import com.yowits.banbu.ai.config.ProviderRegistry;
 import com.yowits.banbu.ai.config.AiPolicyProperties;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -116,10 +117,17 @@ public class AiChatService {
     private void auditLog(ChatRequest req, String model, long start, ChatResponse response) {
         long cost = System.currentTimeMillis() - start;
         String provider = providerFromModel(model);
-        // If Spring AI exposes token usage in metadata, extract here; else log n/a
-        log.info("ai_call tenant={} user={} scene={} provider={} model={} costMs={} status={}",
+        Usage usage = response != null && response.getMetadata() != null ? response.getMetadata().getUsage() : null;
+        log.info("ai_call tenant={} user={} scene={} provider={} model={} costMs={} promptTokens={} generationTokens={} totalTokens={} status={}",
                 req.getTenantId(), req.getUserId(), req.getScene(), provider, model, cost,
+                tokenValue(usage == null ? null : usage.getPromptTokens()),
+                tokenValue(usage == null ? null : usage.getGenerationTokens()),
+                tokenValue(usage == null ? null : usage.getTotalTokens()),
                 response == null ? "STREAM" : "OK");
+    }
+
+    private String tokenValue(Long value) {
+        return value == null ? "n/a" : String.valueOf(value);
     }
 
     private String objectToString(Object o) {

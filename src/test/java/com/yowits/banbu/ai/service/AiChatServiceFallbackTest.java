@@ -7,9 +7,15 @@ import com.yowits.banbu.ai.config.AiPolicyProperties;
 import com.yowits.banbu.ai.config.ProviderRegistry;
 import com.yowits.banbu.ai.config.AiRoutingProperties;
 import com.yowits.banbu.ai.router.ModelRouter;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
@@ -52,6 +58,69 @@ class AiChatServiceFallbackTest {
         ChatResponse res = CompletableFuture.supplyAsync(() -> svc.chat(req).join()).join();
         assertThat(res).isNotNull();
         assertThat(secondRouteCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void nonStreaming_logs_usage_when_provider_returns_it() {
+        AiRoutingProperties rp = new AiRoutingProperties();
+        rp.setRoutes(Map.of("S", "a1:m1"));
+        rp.setChains(Map.of("S", List.of("a1:m1")));
+        ModelRouter router = new ModelRouter(rp);
+
+        ChatResponse ok = new ChatResponse(
+                java.util.List.of(),
+                ChatResponseMetadata.builder()
+                        .withModel("m1")
+                        .withUsage(new Usage() {
+                            @Override
+                            public Long getPromptTokens() {
+                                return 11L;
+                            }
+
+                            @Override
+                            public Long getGenerationTokens() {
+                                return 7L;
+                            }
+
+                            @Override
+                            public Long getTotalTokens() {
+                                return 18L;
+                            }
+                        })
+                        .build()
+        );
+        ChatClient client = successClient(ok, new AtomicInteger());
+
+        ProviderRegistry registry = new ProviderRegistry(
+                Map.of("a1", client),
+                Map.of("a1", "openai-compat")
+        );
+
+        AiPolicyProperties policy = new AiPolicyProperties();
+        AiChatService svc = new AiChatService(registry, router, new ObjectMapper(), policy);
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("S");
+        req.setTenantId("tenant-1");
+        req.setUserId("user-1");
+        req.setMessages(List.of(new ChatMessage("user", "hi")));
+        req.setStream(false);
+
+        Logger logger = (Logger) LoggerFactory.getLogger(AiChatService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            svc.chat(req).join();
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertThat(appender.list)
+                .extracting(ILoggingEvent::getFormattedMessage)
+                .anyMatch(message -> message.contains("promptTokens=11")
+                        && message.contains("generationTokens=7")
+                        && message.contains("totalTokens=18"));
     }
 
     private static ChatClient failingClient() {
