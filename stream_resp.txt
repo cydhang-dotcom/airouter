@@ -1,0 +1,1 @@
+Use /ai/chat/stream for streaming

@@ -1,0 +1,10 @@
+event:message
+data:1
+
+event:message
+data:.
+
+event:message
+data: **
+
+event:message
