@@ -7,10 +7,15 @@ import com.yowits.banbu.ai.api.dto.ChatMessage;
 import com.yowits.banbu.ai.api.dto.ChatRequest;
 import com.yowits.banbu.ai.service.AiChatService;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,12 +26,13 @@ import java.util.concurrent.CompletableFuture;
 
 @SpringBootTest(
     classes = {AiServiceApplication.class, ChatE2ETest.StubConfig.class},
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = {
         // avoid real OpenAI autoconfig in tests
         "spring.autoconfigure.exclude=org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration"
     }
 )
+@AutoConfigureWebTestClient
 class ChatE2ETest {
 
     @TestConfiguration
@@ -49,8 +55,18 @@ class ChatE2ETest {
 
         @Bean
         @Primary
-        org.springframework.ai.chat.model.ChatModel noopChatModel() {
-            return org.mockito.Mockito.mock(org.springframework.ai.chat.model.ChatModel.class);
+        ChatModel noopChatModel() {
+            return new ChatModel() {
+                @Override
+                public ChatResponse call(Prompt prompt) {
+                    return new ChatResponse(List.of());
+                }
+
+                @Override
+                public ChatOptions getDefaultOptions() {
+                    return null;
+                }
+            };
         }
     }
 
