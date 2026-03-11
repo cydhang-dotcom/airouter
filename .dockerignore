@@ -1,14 +1,3 @@
 .git
-.github
-target
-client/target
 .idea
-.vscode
-*.iml
-node_modules
-*.log
-*.tmp
-*~
-Dockerfile*
-.DS_Store
 
