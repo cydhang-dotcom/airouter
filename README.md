@@ -186,6 +186,96 @@ Accept: text/event-stream
 }
 ```
 
+## 客户端 SDK (AiGatewayClient)
+
+`AiGatewayClient` 是一个 Spring Boot 客户端 SDK，用于从业务服务侧调用 `ai-service` 网关，统一封装了非流式与流式请求。
+
+### 依赖配置（Maven）
+
+```xml
+<dependency>
+  <groupId>com.yowits</groupId>
+  <artifactId>banbu-airouter-client</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+</dependency>
+```
+
+### 非流式调用示例
+
+```java
+import com.yowits.banbu.ai.client.AiGatewayClient;
+import com.yowits.banbu.ai.client.AiGatewayClient.ChatMessage;
+import com.yowits.banbu.ai.client.AiGatewayClient.ChatReq;
+import com.yowits.banbu.ai.client.AiGatewayClient.ChatResp;
+
+import java.util.List;
+
+public class AiGatewayClientExample {
+    private final AiGatewayClient aiGatewayClient;
+
+    public AiGatewayClientExample(AiGatewayClient aiGatewayClient) {
+        this.aiGatewayClient = aiGatewayClient;
+    }
+
+    public ChatResp call() {
+        ChatReq req = new ChatReq(
+                "CONTRACT_SUMMARY",
+                "t001",
+                "u123",
+                List.of(new ChatMessage("user", "请总结这份合同的重点")),
+                "text",
+                false
+        );
+
+        ChatResp resp = aiGatewayClient.chat(req);
+        System.out.println("model = " + resp.model);
+        System.out.println("data = " + resp.data);
+        return resp;
+    }
+}
+```
+
+### 流式调用示例
+
+```java
+import com.yowits.banbu.ai.client.AiGatewayClient;
+import com.yowits.banbu.ai.client.AiGatewayClient.ChatMessage;
+import com.yowits.banbu.ai.client.AiGatewayClient.ChatReq;
+import org.springframework.http.codec.ServerSentEvent;
+import reactor.core.publisher.Flux;
+
+import java.util.List;
+
+public class AiGatewayStreamExample {
+    private final AiGatewayClient aiGatewayClient;
+
+    public AiGatewayStreamExample(AiGatewayClient aiGatewayClient) {
+        this.aiGatewayClient = aiGatewayClient;
+    }
+
+    public Flux<ServerSentEvent<String>> call() {
+        ChatReq req = new ChatReq(
+                "CONTRACT_SUMMARY",
+                "t001",
+                "u123",
+                List.of(new ChatMessage("user", "请流式输出这份合同的重点")),
+                "text",
+                true
+        );
+
+        return aiGatewayClient.chatStream(req)
+                .doOnNext(event -> System.out.println(event.data()));
+    }
+}
+```
+
+### 关键类说明
+
+- `AiGatewayClient`：SDK 入口类，提供 `chat(ChatReq)` 和 `chatStream(ChatReq)` 两个方法，分别对应 `/ai/chat` 与 `/ai/chat/stream`
+- `ChatReq`：请求对象，字段包括 `scene`、`tenantId`、`userId`、`messages`、`responseFormat`、`stream`
+- `ChatResp`：非流式响应对象，包含 `data` 和 `model`
+- `ChatMessage`：对话消息对象，包含 `role` 和 `content`
+
 ## 错误响应
 
 所有错误统一为结构化 JSON：
