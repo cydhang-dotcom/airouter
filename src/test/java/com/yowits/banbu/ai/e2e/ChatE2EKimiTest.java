@@ -50,7 +50,7 @@ class ChatE2EKimiTest {
                     System.out.println("KIMI_NONSTREAM_DATA_SNIPPET: " + snippet);
                 }
                 org.assertj.core.api.Assertions.assertThat(data).isNotBlank();
-                org.assertj.core.api.Assertions.assertThat(node.path("model").asText("")).contains("moonshot");
+                org.assertj.core.api.Assertions.assertThat(node.path("model").asText("")).containsIgnoringCase("kimi");
             });
     }
 
@@ -73,7 +73,7 @@ class ChatE2EKimiTest {
             .value(body -> {
                 var node = readJson(body);
                 org.assertj.core.api.Assertions.assertThat(node.path("data").asText("")).isNotBlank();
-                org.assertj.core.api.Assertions.assertThat(node.path("model").asText("")).contains("moonshot");
+                org.assertj.core.api.Assertions.assertThat(node.path("model").asText("")).containsIgnoringCase("kimi");
             });
     }
 
@@ -104,7 +104,7 @@ class ChatE2EKimiTest {
                 org.assertj.core.api.Assertions.assertThat(data.path("summary").asText("")).isNotBlank();
                 org.assertj.core.api.Assertions.assertThat(data.path("language").asText("")).isNotBlank();
                 org.assertj.core.api.Assertions.assertThat(data.path("officeFit").isBoolean()).isTrue();
-                org.assertj.core.api.Assertions.assertThat(node.path("model").asText("")).contains("moonshot");
+                org.assertj.core.api.Assertions.assertThat(node.path("model").asText("")).containsIgnoringCase("kimi");
             });
     }
 

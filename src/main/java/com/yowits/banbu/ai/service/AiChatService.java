@@ -8,6 +8,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
+import io.github.resilience4j.core.registry.EntryAddedEvent;
+import io.github.resilience4j.core.registry.EntryRemovedEvent;
+import io.github.resilience4j.retry.RetryConfig;
+import io.github.resilience4j.retry.RetryRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -74,8 +78,23 @@ public class AiChatService {
                     auditLog(req, model, start, result);
                     return result;
                 } catch (RuntimeException ex) {
+                    // 使用错误分类器判断是否可重试
+                    Throwable classifiedEx = AiErrorClassifier.classify(ex);
+                    boolean canRetry = AiErrorClassifier.isRetryable(classifiedEx);
+                    
+                    log.warn("route_failed alias={} scene={} retryable={} message={}", 
+                            route.alias(), req.getScene(), canRetry, ex.getMessage());
+                    
+                    // 只有可重试的错误才继续尝试下一个 route
+                    if (!canRetry) {
+                        if (classifiedEx instanceof RuntimeException) {
+                            throw (RuntimeException) classifiedEx;  // 直接抛出，不重试
+                        } else {
+                            throw new RuntimeException(classifiedEx.getMessage(), classifiedEx);
+                        }
+                    }
+                    
                     lastEx = ex;
-                    log.warn("route_failed alias={} scene={} message={}", route.alias(), req.getScene(), ex.getMessage());
                     if (policy != null && !policy.isAllowFallback()) {
                         break;
                     }
