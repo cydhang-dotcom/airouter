@@ -11,6 +11,7 @@ import java.util.Set;
  */
 public class AiErrorClassifier {
     private static final Logger log = LoggerFactory.getLogger(AiErrorClassifier.class);
+    private static final String ENGINE_OVERLOADED_TYPE = "engine_overloaded_error";
 
     /**
      * 不可重试的 HTTP 状态码（4xx 客户端错误，除 429）
@@ -56,6 +57,10 @@ public class AiErrorClassifier {
     public static boolean isRetryable(Throwable throwable) {
         if (throwable == null) {
             return true; // 默认可重试
+        }
+
+        if (throwable instanceof RetryableAiException) {
+            return true;
         }
 
         // 如果是 NonRetryableException，直接返回 false
@@ -167,10 +172,33 @@ public class AiErrorClassifier {
         }
 
         Integer statusCode = extractStatusCode(original);
+        if (statusCode != null && isRetryableStatusCode(statusCode)) {
+            return new RetryableAiException(statusCode, original.getMessage(), original);
+        }
         if (statusCode != null && !isRetryableStatusCode(statusCode)) {
             return new NonRetryableException(statusCode, original.getMessage(), original);
         }
 
         return original;
+    }
+
+    public static boolean isEngineOverloaded(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase();
+                if (lower.contains(ENGINE_OVERLOADED_TYPE)
+                        || (lower.contains("overloaded") && extractStatusCode(current) != null && extractStatusCode(current) == 429)) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    public static Integer statusCodeOf(Throwable throwable) {
+        return extractStatusCode(throwable);
     }
 }

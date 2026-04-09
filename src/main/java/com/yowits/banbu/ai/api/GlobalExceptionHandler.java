@@ -2,6 +2,7 @@ package com.yowits.banbu.ai.api;
 
 import com.yowits.banbu.ai.service.InvalidChatRequestException;
 import com.yowits.banbu.ai.service.TenantRateLimitExceededException;
+import com.yowits.banbu.ai.service.UpstreamServiceException;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidChatRequestException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidRequest(InvalidChatRequestException ex, ServerWebExchange exchange) {
         return build(exchange, HttpStatus.BAD_REQUEST, "INVALID_REQUEST", ex.getMessage());
+    }
+
+    @ExceptionHandler(UpstreamServiceException.class)
+    public ResponseEntity<ApiErrorResponse> handleUpstreamService(UpstreamServiceException ex, ServerWebExchange exchange) {
+        return build(exchange, HttpStatus.valueOf(ex.getStatusCode()), ex.getErrorCode(), ex.getMessage());
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, WebExchangeBindException.class})
@@ -66,6 +72,9 @@ public class GlobalExceptionHandler {
         }
         if (ex instanceof InvalidChatRequestException invalid) {
             return handleInvalidRequest(invalid, exchange);
+        }
+        if (ex instanceof UpstreamServiceException upstream) {
+            return handleUpstreamService(upstream, exchange);
         }
         if (ex instanceof TimeoutException) {
             return build(exchange, HttpStatus.GATEWAY_TIMEOUT, "AI_TIMEOUT", "AI request timed out");

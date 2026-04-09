@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: ai-service
+    name: gin-airouter
   main:
     banner-mode: "off"
   ai:
@@ -37,7 +37,7 @@ ai:
     default-policy:
       allow-fallback: true
       timeout-ms: 30000
-      per-route-max-attempts: 1
+      per-route-max-attempts: 3
     scenes:
       CONTRACT_SUMMARY:
         timeout-ms: 120000

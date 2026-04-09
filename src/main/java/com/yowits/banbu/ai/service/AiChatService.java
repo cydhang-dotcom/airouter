@@ -8,10 +8,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
-import io.github.resilience4j.core.registry.EntryAddedEvent;
-import io.github.resilience4j.core.registry.EntryRemovedEvent;
-import io.github.resilience4j.retry.RetryConfig;
-import io.github.resilience4j.retry.RetryRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -24,7 +20,6 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -55,52 +50,68 @@ public class AiChatService {
         CompletableFuture<ChatResponse> fut = CompletableFuture.supplyAsync(() -> {
             RuntimeException lastEx = null;
             for (var route : chain) {
+                String model = route.model();
+                ChatClient client = selectClient(route.alias());
+                int attempts = policy != null ? Math.max(1, policy.getPerRouteMaxAttempts()) : 1;
                 try {
-                    String model = route.model();
-                    ChatClient client = selectClient(route.alias());
-                    var builder = client.prompt();
-                    var opts = buildOptions(route.alias(), model, req);
-                    if (opts != null) builder = builder.options(opts);
-                    if ("json".equalsIgnoreCase(req.getResponseFormat()) && req.getResponseSchema() != null && !req.getResponseSchema().isEmpty()) {
-                        builder.system("请严格按以下JSON Schema返回结果，不要包含多余文字：" + escapePromptTemplate(objectToString(req.getResponseSchema())));
+                    RuntimeException lastRouteException = null;
+                    for (int attempt = 1; attempt <= attempts; attempt++) {
+                        try {
+                            var builder = preparePrompt(client, route.alias(), model, req);
+                            ChatResponse result = builder.call().chatResponse();
+                            if (result != null) {
+                                auditLog(req, model, start, result);
+                                return result;
+                            }
+                            lastRouteException = new IllegalStateException("empty response from provider");
+                        } catch (RuntimeException ex) {
+                            Throwable classifiedEx = AiErrorClassifier.classify(ex);
+                            boolean canRetry = AiErrorClassifier.isRetryable(classifiedEx);
+                            boolean hasNextAttempt = attempt < attempts;
+
+                            log.warn("route_failed alias={} scene={} attempt={}/{} retryable={} message={}",
+                                    route.alias(), req.getScene(), attempt, attempts, canRetry, ex.getMessage());
+
+                            if (!canRetry) {
+                                if (classifiedEx instanceof RuntimeException runtimeException) {
+                                    throw runtimeException;
+                                }
+                                throw new RuntimeException(classifiedEx.getMessage(), classifiedEx);
+                            }
+
+                            lastRouteException = classifiedEx instanceof RuntimeException runtimeException
+                                    ? runtimeException
+                                    : new RuntimeException(classifiedEx.getMessage(), classifiedEx);
+
+                            if (hasNextAttempt) {
+                                sleepBeforeRetry(attempt);
+                                continue;
+                            }
+                        }
                     }
-                    for (ChatMessage m : req.getMessages()) {
-                        String role = m.getRole().toLowerCase();
-                        if ("system".equals(role)) builder.system(m.getContent());
-                        else builder.user(m.getContent());
+
+                    if (lastRouteException != null) {
+                        lastEx = lastRouteException;
                     }
-                    int attempts = policy != null ? Math.max(1, policy.getPerRouteMaxAttempts()) : 1;
-                    ChatResponse result = null;
-                    for (int i = 0; i < attempts; i++) {
-                        result = builder.call().chatResponse();
-                        if (result != null) break;
-                    }
-                    auditLog(req, model, start, result);
-                    return result;
                 } catch (RuntimeException ex) {
-                    // 使用错误分类器判断是否可重试
                     Throwable classifiedEx = AiErrorClassifier.classify(ex);
                     boolean canRetry = AiErrorClassifier.isRetryable(classifiedEx);
-                    
-                    log.warn("route_failed alias={} scene={} retryable={} message={}", 
-                            route.alias(), req.getScene(), canRetry, ex.getMessage());
-                    
-                    // 只有可重试的错误才继续尝试下一个 route
+
                     if (!canRetry) {
                         if (classifiedEx instanceof RuntimeException) {
-                            throw (RuntimeException) classifiedEx;  // 直接抛出，不重试
+                            throw (RuntimeException) classifiedEx;
                         } else {
                             throw new RuntimeException(classifiedEx.getMessage(), classifiedEx);
                         }
                     }
-                    
-                    lastEx = ex;
+
+                    lastEx = classifiedEx instanceof RuntimeException runtimeException ? runtimeException : ex;
                     if (policy != null && !policy.isAllowFallback()) {
                         break;
                     }
                 }
             }
-            throw lastEx != null ? lastEx : new IllegalStateException("no route available");
+            throw wrapTerminalException(lastEx != null ? lastEx : new IllegalStateException("no route available"));
         });
         if (policy != null && policy.getTimeoutMs() > 0) {
             return fut.orTimeout(policy.getTimeoutMs(), java.util.concurrent.TimeUnit.MILLISECONDS);
@@ -116,17 +127,7 @@ public class AiChatService {
         var route = modelRouter.choose(req.getScene());
         String model = route.model();
         ChatClient client = selectClient(route.alias());
-        var builder = client.prompt();
-        var opts = buildOptions(route.alias(), model, req);
-        if (opts != null) builder = builder.options(opts);
-        if ("json".equalsIgnoreCase(req.getResponseFormat()) && req.getResponseSchema() != null && !req.getResponseSchema().isEmpty()) {
-            builder.system("请严格按以下JSON Schema返回结果，不要包含多余文字：" + escapePromptTemplate(objectToString(req.getResponseSchema())));
-        }
-        for (ChatMessage m : req.getMessages()) {
-            String role = m.getRole().toLowerCase();
-            if ("system".equals(role)) builder.system(m.getContent());
-            else builder.user(m.getContent());
-        }
+        var builder = preparePrompt(client, route.alias(), model, req);
         Flux<String> flux = builder.stream().content();
         long timeoutMs = policyProps != null ? policyProps.resolve(req.getTenantId(), req.getScene()).getTimeoutMs() : 60000;
         return flux.doOnComplete(() -> auditLog(req, model, start, null))
@@ -200,5 +201,42 @@ public class AiChatService {
 
     private boolean isKimi25Model(String model) {
         return model != null && model.toLowerCase().contains("kimi-k2.5");
+    }
+
+    private ChatClient.ChatClientRequestSpec preparePrompt(ChatClient client, String alias, String model, ChatRequest req) {
+        var builder = client.prompt();
+        var opts = buildOptions(alias, model, req);
+        if (opts != null) builder = builder.options(opts);
+        if ("json".equalsIgnoreCase(req.getResponseFormat()) && req.getResponseSchema() != null && !req.getResponseSchema().isEmpty()) {
+            builder.system("请严格按以下JSON Schema返回结果，不要包含多余文字：" + escapePromptTemplate(objectToString(req.getResponseSchema())));
+        }
+        for (ChatMessage m : req.getMessages()) {
+            String role = m.getRole().toLowerCase();
+            if ("system".equals(role)) builder.system(m.getContent());
+            else builder.user(m.getContent());
+        }
+        return builder;
+    }
+
+    private void sleepBeforeRetry(int attempt) {
+        long waitMs = Math.min(1000L, 200L * attempt);
+        try {
+            Thread.sleep(waitMs);
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private RuntimeException wrapTerminalException(RuntimeException ex) {
+        if (AiErrorClassifier.isEngineOverloaded(ex)) {
+            return new UpstreamServiceException(503, "AI_PROVIDER_OVERLOADED",
+                    "Upstream AI provider is overloaded, please retry later", ex);
+        }
+        Integer statusCode = AiErrorClassifier.statusCodeOf(ex);
+        if (statusCode != null && statusCode == 429) {
+            return new UpstreamServiceException(429, "AI_UPSTREAM_RATE_LIMITED",
+                    "Upstream AI provider rate limited the request", ex);
+        }
+        return ex;
     }
 }

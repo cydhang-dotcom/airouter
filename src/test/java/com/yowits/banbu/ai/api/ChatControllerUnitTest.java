@@ -8,6 +8,7 @@ import com.yowits.banbu.ai.config.AiRoutingProperties;
 import com.yowits.banbu.ai.router.ModelRouter;
 import com.yowits.banbu.ai.service.AiChatService;
 import com.yowits.banbu.ai.service.TenantGuardService;
+import com.yowits.banbu.ai.service.UpstreamServiceException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -112,5 +113,39 @@ class ChatControllerUnitTest {
             .expectStatus().isEqualTo(429)
             .expectBody()
             .jsonPath("$.code").isEqualTo("AI_RATE_LIMITED");
+    }
+
+    @Test
+    void chat_whenProviderIsOverloaded_returnsWrappedServiceUnavailable() {
+        AiChatService service = new StubAiChatService() {
+            @Override
+            public CompletableFuture<org.springframework.ai.chat.model.ChatResponse> chat(ChatRequest req) {
+                CompletableFuture<org.springframework.ai.chat.model.ChatResponse> future = new CompletableFuture<>();
+                future.completeExceptionally(new UpstreamServiceException(
+                        503,
+                        "AI_PROVIDER_OVERLOADED",
+                        "Upstream AI provider is overloaded, please retry later",
+                        new RuntimeException("429 engine_overloaded_error")
+                ));
+                return future;
+            }
+        };
+        ChatController controller = new ChatController(service, new ObjectMapper(), new TenantGuardService(new AiGuardProperties()));
+        WebTestClient client = WebTestClient.bindToController(controller).controllerAdvice(new GlobalExceptionHandler()).build();
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("CONTRACT_SUMMARY");
+        req.setTenantId("t001");
+        req.setUserId("u123");
+        req.setMessages(List.of(new ChatMessage("user", "hello")));
+
+        client.post().uri("/ai/chat")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(req)
+                .exchange()
+                .expectStatus().isEqualTo(503)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("AI_PROVIDER_OVERLOADED")
+                .jsonPath("$.message").isEqualTo("Upstream AI provider is overloaded, please retry later");
     }
 }

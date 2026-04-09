@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AiChatServiceFallbackTest {
 
@@ -123,6 +124,74 @@ class AiChatServiceFallbackTest {
                         && message.contains("totalTokens=18"));
     }
 
+    @Test
+    void nonStreaming_retries_same_route_when_provider_is_overloaded() {
+        AiRoutingProperties rp = new AiRoutingProperties();
+        rp.setRoutes(Map.of("S", "a1:m1"));
+        rp.setChains(Map.of("S", List.of("a1:m1")));
+        ModelRouter router = new ModelRouter(rp);
+
+        AtomicInteger calls = new AtomicInteger();
+        ChatResponse ok = new ChatResponse(java.util.List.of());
+        ChatClient client = failTwiceThenSucceedClient(ok, calls);
+
+        ProviderRegistry registry = new ProviderRegistry(
+                Map.of("a1", client),
+                Map.of("a1", "openai-compat")
+        );
+
+        AiPolicyProperties policy = new AiPolicyProperties();
+        policy.getDefaultPolicy().setPerRouteMaxAttempts(3);
+        AiChatService svc = new AiChatService(registry, router, new ObjectMapper(), policy);
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("S");
+        req.setTenantId("t");
+        req.setUserId("u");
+        req.setMessages(List.of(new ChatMessage("user", "hi")));
+        req.setStream(false);
+
+        ChatResponse res = svc.chat(req).join();
+        assertThat(res).isNotNull();
+        assertThat(calls.get()).isEqualTo(3);
+    }
+
+    @Test
+    void nonStreaming_wraps_provider_overloaded_after_retries_exhausted() {
+        AiRoutingProperties rp = new AiRoutingProperties();
+        rp.setRoutes(Map.of("S", "a1:m1"));
+        rp.setChains(Map.of("S", List.of("a1:m1")));
+        ModelRouter router = new ModelRouter(rp);
+
+        AtomicInteger calls = new AtomicInteger();
+        ChatClient client = alwaysOverloadedClient(calls);
+
+        ProviderRegistry registry = new ProviderRegistry(
+                Map.of("a1", client),
+                Map.of("a1", "openai-compat")
+        );
+
+        AiPolicyProperties policy = new AiPolicyProperties();
+        policy.getDefaultPolicy().setPerRouteMaxAttempts(2);
+        AiChatService svc = new AiChatService(registry, router, new ObjectMapper(), policy);
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("S");
+        req.setTenantId("t");
+        req.setUserId("u");
+        req.setMessages(List.of(new ChatMessage("user", "hi")));
+        req.setStream(false);
+
+        assertThatThrownBy(() -> svc.chat(req).join())
+                .hasCauseInstanceOf(UpstreamServiceException.class)
+                .satisfies(ex -> {
+                    UpstreamServiceException cause = (UpstreamServiceException) ex.getCause();
+                    assertThat(cause.getStatusCode()).isEqualTo(503);
+                    assertThat(cause.getErrorCode()).isEqualTo("AI_PROVIDER_OVERLOADED");
+                });
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
     private static ChatClient failingClient() {
         ChatClient.CallResponseSpec callSpec = proxy(ChatClient.CallResponseSpec.class, (method, args) -> {
             if ("chatResponse".equals(method.getName())) {
@@ -144,6 +213,43 @@ class AiChatServiceFallbackTest {
             if ("chatResponse".equals(method.getName())) {
                 counter.incrementAndGet();
                 return response;
+            }
+            return unsupported(method.getName());
+        });
+        ChatClient.ChatClientRequestSpec requestSpec = requestSpec(callSpec);
+        return proxy(ChatClient.class, (method, args) -> {
+            if ("prompt".equals(method.getName())) {
+                return requestSpec;
+            }
+            return unsupported(method.getName());
+        });
+    }
+
+    private static ChatClient failTwiceThenSucceedClient(ChatResponse response, AtomicInteger counter) {
+        ChatClient.CallResponseSpec callSpec = proxy(ChatClient.CallResponseSpec.class, (method, args) -> {
+            if ("chatResponse".equals(method.getName())) {
+                int current = counter.incrementAndGet();
+                if (current <= 2) {
+                    throw new RuntimeException("429 - {\"error\":{\"message\":\"The engine is currently overloaded, please try again later\",\"type\":\"engine_overloaded_error\"}}");
+                }
+                return response;
+            }
+            return unsupported(method.getName());
+        });
+        ChatClient.ChatClientRequestSpec requestSpec = requestSpec(callSpec);
+        return proxy(ChatClient.class, (method, args) -> {
+            if ("prompt".equals(method.getName())) {
+                return requestSpec;
+            }
+            return unsupported(method.getName());
+        });
+    }
+
+    private static ChatClient alwaysOverloadedClient(AtomicInteger counter) {
+        ChatClient.CallResponseSpec callSpec = proxy(ChatClient.CallResponseSpec.class, (method, args) -> {
+            if ("chatResponse".equals(method.getName())) {
+                counter.incrementAndGet();
+                throw new RuntimeException("429 - {\"error\":{\"message\":\"The engine is currently overloaded, please try again later\",\"type\":\"engine_overloaded_error\"}}");
             }
             return unsupported(method.getName());
         });
