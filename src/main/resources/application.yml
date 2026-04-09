@@ -105,3 +105,7 @@ resilience4j:
       ai:
         slidingWindowSize: 20
         failureRateThreshold: 50
+
+logging:
+  level:
+    reactor.netty.http.server.HttpServerOperations: ERROR

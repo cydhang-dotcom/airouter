@@ -192,6 +192,78 @@ class AiChatServiceFallbackTest {
         assertThat(calls.get()).isEqualTo(2);
     }
 
+    @Test
+    void nonStreaming_wraps_network_errors_after_retries_exhausted() {
+        AiRoutingProperties rp = new AiRoutingProperties();
+        rp.setRoutes(Map.of("S", "a1:m1"));
+        rp.setChains(Map.of("S", List.of("a1:m1")));
+        ModelRouter router = new ModelRouter(rp);
+
+        AtomicInteger calls = new AtomicInteger();
+        ChatClient client = alwaysFailingClient(calls, "Connection refused: upstream proxy failed");
+
+        ProviderRegistry registry = new ProviderRegistry(
+                Map.of("a1", client),
+                Map.of("a1", "openai-compat")
+        );
+
+        AiPolicyProperties policy = new AiPolicyProperties();
+        policy.getDefaultPolicy().setPerRouteMaxAttempts(2);
+        AiChatService svc = new AiChatService(registry, router, new ObjectMapper(), policy);
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("S");
+        req.setTenantId("t");
+        req.setUserId("u");
+        req.setMessages(List.of(new ChatMessage("user", "hi")));
+        req.setStream(false);
+
+        assertThatThrownBy(() -> svc.chat(req).join())
+                .hasCauseInstanceOf(UpstreamServiceException.class)
+                .satisfies(ex -> {
+                    UpstreamServiceException cause = (UpstreamServiceException) ex.getCause();
+                    assertThat(cause.getStatusCode()).isEqualTo(502);
+                    assertThat(cause.getErrorCode()).isEqualTo("AI_UPSTREAM_NETWORK_ERROR");
+                });
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
+    @Test
+    void nonStreaming_wraps_timeout_errors_after_retries_exhausted() {
+        AiRoutingProperties rp = new AiRoutingProperties();
+        rp.setRoutes(Map.of("S", "a1:m1"));
+        rp.setChains(Map.of("S", List.of("a1:m1")));
+        ModelRouter router = new ModelRouter(rp);
+
+        AtomicInteger calls = new AtomicInteger();
+        ChatClient client = alwaysFailingClient(calls, "Read timed out while calling upstream");
+
+        ProviderRegistry registry = new ProviderRegistry(
+                Map.of("a1", client),
+                Map.of("a1", "openai-compat")
+        );
+
+        AiPolicyProperties policy = new AiPolicyProperties();
+        policy.getDefaultPolicy().setPerRouteMaxAttempts(2);
+        AiChatService svc = new AiChatService(registry, router, new ObjectMapper(), policy);
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("S");
+        req.setTenantId("t");
+        req.setUserId("u");
+        req.setMessages(List.of(new ChatMessage("user", "hi")));
+        req.setStream(false);
+
+        assertThatThrownBy(() -> svc.chat(req).join())
+                .hasCauseInstanceOf(UpstreamServiceException.class)
+                .satisfies(ex -> {
+                    UpstreamServiceException cause = (UpstreamServiceException) ex.getCause();
+                    assertThat(cause.getStatusCode()).isEqualTo(504);
+                    assertThat(cause.getErrorCode()).isEqualTo("AI_UPSTREAM_TIMEOUT");
+                });
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
     private static ChatClient failingClient() {
         ChatClient.CallResponseSpec callSpec = proxy(ChatClient.CallResponseSpec.class, (method, args) -> {
             if ("chatResponse".equals(method.getName())) {
@@ -250,6 +322,23 @@ class AiChatServiceFallbackTest {
             if ("chatResponse".equals(method.getName())) {
                 counter.incrementAndGet();
                 throw new RuntimeException("429 - {\"error\":{\"message\":\"The engine is currently overloaded, please try again later\",\"type\":\"engine_overloaded_error\"}}");
+            }
+            return unsupported(method.getName());
+        });
+        ChatClient.ChatClientRequestSpec requestSpec = requestSpec(callSpec);
+        return proxy(ChatClient.class, (method, args) -> {
+            if ("prompt".equals(method.getName())) {
+                return requestSpec;
+            }
+            return unsupported(method.getName());
+        });
+    }
+
+    private static ChatClient alwaysFailingClient(AtomicInteger counter, String message) {
+        ChatClient.CallResponseSpec callSpec = proxy(ChatClient.CallResponseSpec.class, (method, args) -> {
+            if ("chatResponse".equals(method.getName())) {
+                counter.incrementAndGet();
+                throw new RuntimeException(message);
             }
             return unsupported(method.getName());
         });

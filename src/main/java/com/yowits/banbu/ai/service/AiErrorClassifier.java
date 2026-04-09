@@ -201,4 +201,44 @@ public class AiErrorClassifier {
     public static Integer statusCodeOf(Throwable throwable) {
         return extractStatusCode(throwable);
     }
+
+    public static boolean isTimeoutRelated(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String exceptionName = current.getClass().getSimpleName().toLowerCase();
+            String message = current.getMessage() == null ? "" : current.getMessage().toLowerCase();
+            if (exceptionName.contains("timeout")
+                    || exceptionName.contains("timedout")
+                    || message.contains("timed out")
+                    || message.contains("timeout")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    public static boolean isNetworkRelated(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String exceptionName = current.getClass().getSimpleName().toLowerCase();
+            String message = current.getMessage() == null ? "" : current.getMessage().toLowerCase();
+            if (exceptionName.contains("connection")
+                    || exceptionName.contains("network")
+                    || exceptionName.contains("socket")
+                    || exceptionName.contains("host")
+                    || exceptionName.contains("connect")
+                    || message.contains("connection refused")
+                    || message.contains("broken pipe")
+                    || message.contains("connection reset")
+                    || message.contains("proxy")
+                    || message.contains("dns")
+                    || message.contains("unknown host")
+                    || message.contains("bad gateway")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
 }

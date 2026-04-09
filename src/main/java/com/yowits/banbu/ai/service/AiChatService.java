@@ -232,6 +232,14 @@ public class AiChatService {
             return new UpstreamServiceException(503, "AI_PROVIDER_OVERLOADED",
                     "Upstream AI provider is overloaded, please retry later", ex);
         }
+        if (AiErrorClassifier.isTimeoutRelated(ex)) {
+            return new UpstreamServiceException(504, "AI_UPSTREAM_TIMEOUT",
+                    "Upstream AI provider request timed out", ex);
+        }
+        if (AiErrorClassifier.isNetworkRelated(ex)) {
+            return new UpstreamServiceException(502, "AI_UPSTREAM_NETWORK_ERROR",
+                    "Network error while connecting to upstream AI provider", ex);
+        }
         Integer statusCode = AiErrorClassifier.statusCodeOf(ex);
         if (statusCode != null && statusCode == 429) {
             return new UpstreamServiceException(429, "AI_UPSTREAM_RATE_LIMITED",
