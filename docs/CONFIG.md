@@ -90,9 +90,14 @@ ai:
       allow-fallback: true
       timeout-ms: 30000
       per-route-max-attempts: 1
+      routing-mode: sequential
+      race-max-candidates: 2
     scenes:
       CONTRACT_SUMMARY:
         timeout-ms: 45000
+      FAST_RESPONSE_SCENE:
+        routing-mode: fastest-wins
+        race-max-candidates: 2
     tenants:
       t001:
         default-policy:
@@ -107,6 +112,15 @@ ai:
 - `allow-fallback`：是否允许切备线
 - `timeout-ms`：最终请求超时
 - `per-route-max-attempts`：单路由最大尝试次数
+- `routing-mode`：`sequential` 或 `fastest-wins`
+- `race-max-candidates`：竞速时最多并发多少条候选链路
+
+竞速模式说明：
+- `fastest-wins` 只作用于非流式 `/ai/chat`
+- 不改变现有 `routes/chains` 结构
+- 会并发发起前 `race-max-candidates` 条链路
+- 谁先成功返回就用谁
+- 如果竞速候选都失败，且后面还有链路，并且 `allow-fallback=true`，会继续顺序尝试剩余链路
 
 ## 4. 租户保护
 
@@ -143,6 +157,8 @@ ai:
       allow-fallback: true
       timeout-ms: 30000
       per-route-max-attempts: 1
+      routing-mode: sequential
+      race-max-candidates: 2
   guard:
     enabled: true
     default-requests-per-minute: 120
@@ -167,6 +183,7 @@ providers:
 - routes / chains 引用的别名存在
 - `timeout-ms > 0`
 - `per-route-max-attempts >= 1`
+- `race-max-candidates >= 1`
 - `default-requests-per-minute > 0`
 
 如果校验失败，应用会直接启动失败，而不是把错误留到运行期。

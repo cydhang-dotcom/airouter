@@ -68,6 +68,8 @@ ai:
       allow-fallback: true
       timeout-ms: 30000
       per-route-max-attempts: 1
+      routing-mode: sequential
+      race-max-candidates: 2
   guard:
     enabled: true
     default-requests-per-minute: 120
@@ -89,6 +91,7 @@ providers:
 - 路由使用 `alias:model`
 - 新配置优先使用 `chains`
 - `routes` 仅保留为兼容简写
+- 某些速度优先场景可以通过 `routing-mode=fastest-wins` 开启主备竞速
 
 ## 环境变量
 
@@ -325,6 +328,26 @@ public class AiGatewayStreamExample {
 - `chains` 没显式写主路由时，服务端仍会自动补主路由到链首
 - `ai.guard` 当前是单实例内存限流，只适合试点或单实例部署
 - `responseSchema` 是约束提示，不是 provider 原生强约束
+
+## 速度优先模式
+
+如果某些场景更关心延迟，可以在 `ai.policy` 中启用竞速模式：
+
+```yaml
+ai:
+  policy:
+    scenes:
+      FAST_RESPONSE_SCENE:
+        routing-mode: fastest-wins
+        race-max-candidates: 2
+```
+
+说明：
+- 只作用于非流式 `/ai/chat`
+- 不改 `routes/chains` 结构
+- 会并发发起前 `race-max-candidates` 条链路
+- 谁先成功返回就用谁
+- 如果竞速候选都失败，且后面还有链路，并且 `allow-fallback=true`，会继续顺序尝试剩余链路
 
 ## 测试
 

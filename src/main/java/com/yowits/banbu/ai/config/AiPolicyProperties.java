@@ -42,11 +42,17 @@ public class AiPolicyProperties {
     public void setTenants(Map<String, TenantPolicy> tenants) { this.tenants = tenants; }
 
     public static class Policy {
+        public static final String ROUTING_MODE_SEQUENTIAL = "sequential";
+        public static final String ROUTING_MODE_FASTEST_WINS = "fastest-wins";
+
         private boolean allowFallback = true;
         @Min(1)
         private int timeoutMs = 30000;
         @Min(1)
         private int perRouteMaxAttempts = 1; // 每条链路的最大尝试次数
+        private String routingMode = ROUTING_MODE_SEQUENTIAL;
+        @Min(1)
+        private int raceMaxCandidates = 2;
 
         public boolean isAllowFallback() { return allowFallback; }
         public void setAllowFallback(boolean allowFallback) { this.allowFallback = allowFallback; }
@@ -54,6 +60,14 @@ public class AiPolicyProperties {
         public void setTimeoutMs(int timeoutMs) { this.timeoutMs = timeoutMs; }
         public int getPerRouteMaxAttempts() { return perRouteMaxAttempts; }
         public void setPerRouteMaxAttempts(int perRouteMaxAttempts) { this.perRouteMaxAttempts = perRouteMaxAttempts; }
+        public String getRoutingMode() { return routingMode; }
+        public void setRoutingMode(String routingMode) { this.routingMode = routingMode; }
+        public int getRaceMaxCandidates() { return raceMaxCandidates; }
+        public void setRaceMaxCandidates(int raceMaxCandidates) { this.raceMaxCandidates = raceMaxCandidates; }
+
+        public boolean isFastestWins() {
+            return ROUTING_MODE_FASTEST_WINS.equalsIgnoreCase(routingMode);
+        }
     }
 
     public static class TenantPolicy {

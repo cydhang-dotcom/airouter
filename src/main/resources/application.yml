@@ -38,6 +38,8 @@ ai:
       allow-fallback: true
       timeout-ms: 30000
       per-route-max-attempts: 3
+      routing-mode: sequential
+      race-max-candidates: 2
     scenes:
       CONTRACT_SUMMARY:
         timeout-ms: 120000
@@ -47,6 +49,9 @@ ai:
         timeout-ms: 120000
       BUSINESS_SCOPE_ANALYSIS:
         timeout-ms: 120000
+      FAST_RESPONSE_SCENE:
+        routing-mode: fastest-wins
+        race-max-candidates: 2
     tenants:
       t001:
         default-policy:

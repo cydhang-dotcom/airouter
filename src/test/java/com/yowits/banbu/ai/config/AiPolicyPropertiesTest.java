@@ -38,5 +38,17 @@ class AiPolicyPropertiesTest {
         // global default
         assertThat(props.resolve(null, "S9").getTimeoutMs()).isEqualTo(30000);
     }
-}
 
+    @Test
+    void policy_defaults_to_sequential_and_can_switch_to_fastestWins() {
+        AiPolicyProperties.Policy policy = new AiPolicyProperties.Policy();
+        assertThat(policy.isFastestWins()).isFalse();
+        assertThat(policy.getRaceMaxCandidates()).isEqualTo(2);
+
+        policy.setRoutingMode(AiPolicyProperties.Policy.ROUTING_MODE_FASTEST_WINS);
+        policy.setRaceMaxCandidates(3);
+
+        assertThat(policy.isFastestWins()).isTrue();
+        assertThat(policy.getRaceMaxCandidates()).isEqualTo(3);
+    }
+}

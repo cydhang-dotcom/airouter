@@ -13,13 +13,26 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.Duration;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
         // 显式从系统属性读取并注入 Spring AI 所需配置
         "spring.ai.openai.base-url=${openai.base.url}",
-        "spring.ai.openai.api-key=${openai.api.key}"
+        "spring.ai.openai.api-key=${openai.api.key}",
+        "providers.clients.kimi-main.type=openai-compat",
+        "providers.clients.kimi-main.base-url=${openai.base.url}",
+        "providers.clients.kimi-main.api-key=${openai.api.key}",
+        "providers.clients.deepseek-main.type=openai-compat",
+        "providers.clients.deepseek-main.base-url=${deepseek.base.url:https://api.deepseek.com}",
+        "providers.clients.deepseek-main.api-key=${deepseek.api.key}",
+        "ai.routes.FAST_RESPONSE_SCENE=${fast.response.route:kimi-main:moonshot-v1-8k}",
+        "ai.chains.FAST_RESPONSE_SCENE[0]=${fast.response.chain0:kimi-main:moonshot-v1-8k}",
+        "ai.chains.FAST_RESPONSE_SCENE[1]=${fast.response.chain1:deepseek-main:deepseek-chat}",
+        "ai.policy.scenes.FAST_RESPONSE_SCENE.routing-mode=fastest-wins",
+        "ai.policy.scenes.FAST_RESPONSE_SCENE.race-max-candidates=2",
+        "ai.policy.scenes.FAST_RESPONSE_SCENE.timeout-ms=45000"
     }
 )
 @EnabledIfSystemProperty(named = "e2e.kimi", matches = "(?i:true|1|yes)")
@@ -29,6 +42,11 @@ class ChatE2EKimiTest {
 
     @Autowired
     private WebTestClient webTestClient;
+
+    @Autowired
+    void configureWebTestClient(WebTestClient client) {
+        this.webTestClient = client.mutate().responseTimeout(Duration.ofSeconds(60)).build();
+    }
 
     @Test
     void kimi_nonstream_chat_ok() {
@@ -212,6 +230,78 @@ class ChatE2EKimiTest {
             .expectBody()
             .jsonPath("$.code").isEqualTo("INVALID_REQUEST")
             .jsonPath("$.message").value(body -> org.assertj.core.api.Assertions.assertThat(body.toString()).contains("content"));
+    }
+
+    @Test
+    void fastestWins_race_between_kimi_and_deepseek_returns_valid_json() {
+        ChatRequest req = baseRequest(false, """
+            你是一位拥有 10 年经验的上海工商注册专家。对“企业代账服务”，依据中国大陆最新工商法规进行严格的合规性分析。
+
+            核心原则：
+            1. 仅当业务明确涉及需要行政许可或备案的项目时，才标记为需要资质。
+            2. 不要过度联想，不要把软件开发类业务误判为需要许可。
+            3. 经营范围必须使用标准规范表述。
+
+            分析任务：
+            1. 生成 5-8 个最核心的标准经营范围条目，按重要性排序，逗号分隔。
+            2. 判断该业务是否需要许可或资质，若需要请给出证书全称。
+            3. 判断是否涉及强监管敏感领域，只能使用以下代码：
+               education, medical, food, import_export, media, finance, hr_service, construction, chemical, icp, other
+
+            直接返回 JSON，不要包含 Markdown，不要输出解释文字。
+            字段名必须严格使用以下键名，不能改写、缩写或替换：
+            - suggestedScope: string
+            - needLicense: "yes" | "no"
+            - licenseDetail: string
+            - hasSensitiveTypes: "yes" | "no"
+            - sensitiveTypes: string[]
+            - otherSensitiveType: string
+
+            返回格式要求：
+            suggestedScope 填写经营范围字符串；
+            needLicense 只能是 yes 或 no，表示该业务是否需要相关证照或备案，不表示用户当前是否已经持有；
+            licenseDetail 无需证照时返回空字符串；如需要，填写所需证照或备案名称；
+            hasSensitiveTypes 只能是 yes 或 no；
+            sensitiveTypes 无敏感领域时返回空数组；
+            otherSensitiveType 无补充项时返回空字符串。
+            """);
+        req.setScene("FAST_RESPONSE_SCENE");
+        req.setResponseFormat("json");
+        req.setResponseSchema(Map.of(
+            "type", "object",
+            "properties", Map.of(
+                "suggestedScope", Map.of("type", "string"),
+                "needLicense", Map.of("type", "string", "enum", List.of("yes", "no")),
+                "licenseDetail", Map.of("type", "string"),
+                "hasSensitiveTypes", Map.of("type", "string", "enum", List.of("yes", "no")),
+                "sensitiveTypes", Map.of("type", "array", "items", Map.of("type", "string")),
+                "otherSensitiveType", Map.of("type", "string")
+            ),
+            "required", List.of("suggestedScope", "needLicense", "licenseDetail", "hasSensitiveTypes", "sensitiveTypes", "otherSensitiveType")
+        ));
+
+        webTestClient.post().uri("/ai/chat")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(req)
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody(String.class)
+            .value(body -> {
+                var node = readJson(body);
+                var data = node.path("data");
+                String model = node.path("model").asText("");
+                System.out.println("FASTEST_WINS_MODEL: " + model);
+                System.out.println("FASTEST_WINS_DATA: " + data.toPrettyString());
+
+                org.assertj.core.api.Assertions.assertThat(data.isObject()).isTrue();
+                org.assertj.core.api.Assertions.assertThat(model).isIn("moonshot-v1-8k", "deepseek-chat");
+                org.assertj.core.api.Assertions.assertThat(data.path("suggestedScope").asText("")).isNotBlank();
+                org.assertj.core.api.Assertions.assertThat(data.path("needLicense").asText("")).isIn("yes", "no");
+                org.assertj.core.api.Assertions.assertThat(data.path("licenseDetail").isTextual()).isTrue();
+                org.assertj.core.api.Assertions.assertThat(data.path("hasSensitiveTypes").asText("")).isIn("yes", "no");
+                org.assertj.core.api.Assertions.assertThat(data.path("sensitiveTypes").isArray()).isTrue();
+                org.assertj.core.api.Assertions.assertThat(data.path("otherSensitiveType").isTextual()).isTrue();
+            });
     }
 
     private static ChatRequest baseRequest(boolean stream, String prompt) {
