@@ -234,7 +234,51 @@ class ChatE2EKimiTest {
 
     @Test
     void fastestWins_race_between_kimi_and_deepseek_returns_valid_json() {
-        ChatRequest req = baseRequest(false, """
+        ChatRequest req = baseRequest(false, fastResponsePrompt());
+        req.setScene("FAST_RESPONSE_SCENE");
+        req.setResponseFormat("json");
+        if (!Boolean.getBoolean("fast.response.disable-schema")) {
+            req.setResponseSchema(Map.of(
+                "type", "object",
+                "properties", Map.of(
+                    "suggestedScope", Map.of("type", "string"),
+                    "needLicense", Map.of("type", "string", "enum", List.of("yes", "no")),
+                    "licenseDetail", Map.of("type", "string"),
+                    "hasSensitiveTypes", Map.of("type", "string", "enum", List.of("yes", "no")),
+                    "sensitiveTypes", Map.of("type", "array", "items", Map.of("type", "string")),
+                    "otherSensitiveType", Map.of("type", "string")
+                ),
+                "required", List.of("suggestedScope", "needLicense", "licenseDetail", "hasSensitiveTypes", "sensitiveTypes", "otherSensitiveType")
+            ));
+        }
+
+        webTestClient.post().uri("/ai/chat")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(req)
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody(String.class)
+            .value(body -> {
+                var node = readJson(body);
+                var data = node.path("data");
+                String model = node.path("model").asText("");
+                System.out.println("FASTEST_WINS_MODEL: " + model);
+                System.out.println("FASTEST_WINS_DATA: " + data.toPrettyString());
+
+                org.assertj.core.api.Assertions.assertThat(data.isObject()).isTrue();
+                org.assertj.core.api.Assertions.assertThat(model)
+                        .isIn("moonshot-v1-8k", "deepseek-chat", "deepseek-v4-flash", "kimi-k2-0905-preview");
+                org.assertj.core.api.Assertions.assertThat(data.path("suggestedScope").asText("")).isNotBlank();
+                org.assertj.core.api.Assertions.assertThat(data.path("needLicense").asText("")).isIn("yes", "no");
+                org.assertj.core.api.Assertions.assertThat(data.path("licenseDetail").isTextual()).isTrue();
+                org.assertj.core.api.Assertions.assertThat(data.path("hasSensitiveTypes").asText("")).isIn("yes", "no");
+                org.assertj.core.api.Assertions.assertThat(data.path("sensitiveTypes").isArray()).isTrue();
+                org.assertj.core.api.Assertions.assertThat(data.path("otherSensitiveType").isTextual()).isTrue();
+            });
+    }
+
+    private static String fastResponsePrompt() {
+        return System.getProperty("fast.response.prompt", """
             你是一位拥有 10 年经验的上海工商注册专家。对“企业代账服务”，依据中国大陆最新工商法规进行严格的合规性分析。
 
             核心原则：
@@ -265,43 +309,6 @@ class ChatE2EKimiTest {
             sensitiveTypes 无敏感领域时返回空数组；
             otherSensitiveType 无补充项时返回空字符串。
             """);
-        req.setScene("FAST_RESPONSE_SCENE");
-        req.setResponseFormat("json");
-        req.setResponseSchema(Map.of(
-            "type", "object",
-            "properties", Map.of(
-                "suggestedScope", Map.of("type", "string"),
-                "needLicense", Map.of("type", "string", "enum", List.of("yes", "no")),
-                "licenseDetail", Map.of("type", "string"),
-                "hasSensitiveTypes", Map.of("type", "string", "enum", List.of("yes", "no")),
-                "sensitiveTypes", Map.of("type", "array", "items", Map.of("type", "string")),
-                "otherSensitiveType", Map.of("type", "string")
-            ),
-            "required", List.of("suggestedScope", "needLicense", "licenseDetail", "hasSensitiveTypes", "sensitiveTypes", "otherSensitiveType")
-        ));
-
-        webTestClient.post().uri("/ai/chat")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(req)
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody(String.class)
-            .value(body -> {
-                var node = readJson(body);
-                var data = node.path("data");
-                String model = node.path("model").asText("");
-                System.out.println("FASTEST_WINS_MODEL: " + model);
-                System.out.println("FASTEST_WINS_DATA: " + data.toPrettyString());
-
-                org.assertj.core.api.Assertions.assertThat(data.isObject()).isTrue();
-                org.assertj.core.api.Assertions.assertThat(model).isIn("moonshot-v1-8k", "deepseek-chat");
-                org.assertj.core.api.Assertions.assertThat(data.path("suggestedScope").asText("")).isNotBlank();
-                org.assertj.core.api.Assertions.assertThat(data.path("needLicense").asText("")).isIn("yes", "no");
-                org.assertj.core.api.Assertions.assertThat(data.path("licenseDetail").isTextual()).isTrue();
-                org.assertj.core.api.Assertions.assertThat(data.path("hasSensitiveTypes").asText("")).isIn("yes", "no");
-                org.assertj.core.api.Assertions.assertThat(data.path("sensitiveTypes").isArray()).isTrue();
-                org.assertj.core.api.Assertions.assertThat(data.path("otherSensitiveType").isTextual()).isTrue();
-            });
     }
 
     private static ChatRequest baseRequest(boolean stream, String prompt) {

@@ -13,9 +13,11 @@ import com.yowits.banbu.ai.router.ModelRouter;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
@@ -59,6 +61,38 @@ class AiChatServiceFallbackTest {
 
         ChatResponse res = CompletableFuture.supplyAsync(() -> svc.chat(req).join()).join();
         assertThat(res).isNotNull();
+        assertThat(secondRouteCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void nonStreaming_jsonFallbacks_to_second_route_when_first_returns_invalidJson() {
+        AiRoutingProperties rp = new AiRoutingProperties();
+        rp.setRoutes(Map.of("S", "a1:m1"));
+        rp.setChains(Map.of("S", List.of("a1:m1", "a2:m2")));
+        ModelRouter router = new ModelRouter(rp);
+
+        AtomicInteger secondRouteCalls = new AtomicInteger();
+        ChatClient client1 = successClient(responseWithContent("m1", "{bad-json"), new AtomicInteger());
+        ChatClient client2 = successClient(responseWithContent("m2", "{\"ok\":true}"), secondRouteCalls);
+
+        ProviderRegistry registry = new ProviderRegistry(
+                Map.of("a1", client1, "a2", client2),
+                Map.of("a1", "openai-compat", "a2", "openai-compat")
+        );
+
+        AiPolicyProperties policy = new AiPolicyProperties();
+        AiChatService svc = new AiChatService(registry, router, new ObjectMapper(), policy);
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("S");
+        req.setTenantId("t");
+        req.setUserId("u");
+        req.setMessages(List.of(new ChatMessage("user", "hi")));
+        req.setStream(false);
+        req.setResponseFormat("json");
+
+        ChatResponse res = svc.chat(req).join();
+        assertThat(res.getMetadata().getModel()).isEqualTo("m2");
         assertThat(secondRouteCalls.get()).isEqualTo(1);
     }
 
@@ -189,6 +223,38 @@ class AiChatServiceFallbackTest {
 
         ChatResponse res = svc.chat(req).join();
         assertThat(slowStarted.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(res.getMetadata().getModel()).isEqualTo("m2");
+    }
+
+    @Test
+    void nonStreaming_fastestWins_ignores_faster_invalidJson_and_returns_slower_validJson() {
+        AiRoutingProperties rp = new AiRoutingProperties();
+        rp.setRoutes(Map.of("S", "a1:m1"));
+        rp.setChains(Map.of("S", List.of("a1:m1", "a2:m2")));
+        ModelRouter router = new ModelRouter(rp);
+
+        ChatClient client1 = delayedSuccessClient(responseWithContent("m1", "{bad-json"), 10, new CountDownLatch(0));
+        ChatClient client2 = delayedSuccessClient(responseWithContent("m2", "{\"ok\":true}"), 60, new CountDownLatch(0));
+
+        ProviderRegistry registry = new ProviderRegistry(
+                Map.of("a1", client1, "a2", client2),
+                Map.of("a1", "openai-compat", "a2", "openai-compat")
+        );
+
+        AiPolicyProperties policy = new AiPolicyProperties();
+        policy.getDefaultPolicy().setRoutingMode(AiPolicyProperties.Policy.ROUTING_MODE_FASTEST_WINS);
+        policy.getDefaultPolicy().setRaceMaxCandidates(2);
+        AiChatService svc = new AiChatService(registry, router, new ObjectMapper(), policy);
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("S");
+        req.setTenantId("t");
+        req.setUserId("u");
+        req.setMessages(List.of(new ChatMessage("user", "hi")));
+        req.setStream(false);
+        req.setResponseFormat("json");
+
+        ChatResponse res = svc.chat(req).join();
         assertThat(res.getMetadata().getModel()).isEqualTo("m2");
     }
 
@@ -546,6 +612,13 @@ class AiChatServiceFallbackTest {
     private static ChatResponse responseWithModel(String model) {
         return new ChatResponse(
                 java.util.List.of(),
+                ChatResponseMetadata.builder().withModel(model).build()
+        );
+    }
+
+    private static ChatResponse responseWithContent(String model, String content) {
+        return new ChatResponse(
+                List.of(new Generation(new AssistantMessage(content))),
                 ChatResponseMetadata.builder().withModel(model).build()
         );
     }

@@ -1,6 +1,7 @@
 package com.yowits.banbu.ai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yowits.banbu.ai.api.dto.ChatMessage;
 import com.yowits.banbu.ai.api.dto.ChatRequest;
 import com.yowits.banbu.ai.config.AiPolicyProperties;
@@ -173,6 +174,7 @@ public class AiChatService {
                 var builder = preparePrompt(client, route.alias(), model, req);
                 ChatResponse result = builder.call().chatResponse();
                 if (result != null) {
+                    validateStructuredPayload(req, result);
                     auditLog(req, model, start, result);
                     return result;
                 }
@@ -331,5 +333,46 @@ public class AiChatService {
                     "Upstream AI provider rate limited the request", ex);
         }
         return ex;
+    }
+
+    private void validateStructuredPayload(ChatRequest req, ChatResponse response) {
+        if (!"json".equalsIgnoreCase(req.getResponseFormat())) {
+            return;
+        }
+        Object content = response.getResult() != null && response.getResult().getOutput() != null
+                ? response.getResult().getOutput().getContent()
+                : null;
+        if (content == null) {
+            throw new IllegalStateException("empty json payload from provider");
+        }
+        if (content instanceof JsonNode) {
+            return;
+        }
+        if (content instanceof String raw) {
+            tryParseJson(raw);
+            return;
+        }
+        throw new IllegalStateException("unsupported json payload type from provider: " + content.getClass().getSimpleName());
+    }
+
+    private JsonNode tryParseJson(String raw) {
+        try {
+            return objectMapper.readTree(stripFence(raw));
+        } catch (Exception ex) {
+            throw new IllegalStateException("invalid json payload from provider", ex);
+        }
+    }
+
+    private String stripFence(String s) {
+        String t = s.trim();
+        if (t.startsWith("```")) {
+            int firstBrace = t.indexOf('{');
+            int firstBracket = t.indexOf('[');
+            int idx = -1;
+            if (firstBrace >= 0 && firstBracket >= 0) idx = Math.min(firstBrace, firstBracket);
+            else idx = Math.max(firstBrace, firstBracket);
+            if (idx > 0) return t.substring(idx).replaceAll("```$", " ").trim();
+        }
+        return t;
     }
 }

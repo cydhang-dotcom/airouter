@@ -200,9 +200,40 @@
                 <e2e.kimi>${e2e.kimi}</e2e.kimi>
                 <openai.base.url>${env.OPENAI_BASE_URL}</openai.base.url>
                 <openai.api.key>${env.OPENAI_COMPAT_API_KEY}</openai.api.key>
+                <deepseek.base.url>${env.DEEPSEEK_BASE_URL}</deepseek.base.url>
+                <deepseek.api.key>${env.DEEPSEEK_API_KEY}</deepseek.api.key>
+                <deepseek.model>${deepseek.model}</deepseek.model>
                 <!-- 直接透传给 Spring AI AutoConfig，支持 -Dopenai.* 或 -Dspring.ai.openai.* -->
                 <spring.ai.openai.base-url>${spring.ai.openai.base-url:-${openai.base.url}}</spring.ai.openai.base-url>
                 <spring.ai.openai.api-key>${spring.ai.openai.api-key:-${openai.api.key}}</spring.ai.openai.api-key>
+              </systemPropertyVariables>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>e2e-deepseek</id>
+      <activation>
+        <activeByDefault>false</activeByDefault>
+      </activation>
+      <properties>
+        <e2e.deepseek>true</e2e.deepseek>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <version>3.2.5</version>
+            <configuration>
+              <systemPropertyVariables>
+                <e2e.deepseek>${e2e.deepseek}</e2e.deepseek>
+                <deepseek.base.url>${env.DEEPSEEK_BASE_URL}</deepseek.base.url>
+                <deepseek.api.key>${env.DEEPSEEK_API_KEY}</deepseek.api.key>
+                <deepseek.model>${deepseek.model}</deepseek.model>
+                <spring.ai.openai.base-url>${spring.ai.openai.base-url:-${deepseek.base.url}}</spring.ai.openai.base-url>
+                <spring.ai.openai.api-key>${spring.ai.openai.api-key:-${deepseek.api.key}}</spring.ai.openai.api-key>
               </systemPropertyVariables>
             </configuration>
           </plugin>
