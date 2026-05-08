@@ -223,6 +223,114 @@ class AiChatServiceFallbackTest {
     }
 
     @Test
+    void nonStreaming_fastestWins_doesNotUse_laterFallback_whenDisabled() {
+        AiRoutingProperties rp = new AiRoutingProperties();
+        rp.setRoutes(Map.of("S", "a1:m1"));
+        rp.setChains(Map.of("S", List.of("a1:m1", "a2:m2", "a3:m3")));
+        ModelRouter router = new ModelRouter(rp);
+
+        AtomicInteger thirdRouteCalls = new AtomicInteger();
+        ProviderRegistry registry = new ProviderRegistry(
+                Map.of(
+                        "a1", failingClient(),
+                        "a2", failingClient(),
+                        "a3", successClient(responseWithModel("m3"), thirdRouteCalls)
+                ),
+                Map.of("a1", "openai-compat", "a2", "openai-compat", "a3", "openai-compat")
+        );
+
+        AiPolicyProperties policy = new AiPolicyProperties();
+        policy.getDefaultPolicy().setRoutingMode(AiPolicyProperties.Policy.ROUTING_MODE_FASTEST_WINS);
+        policy.getDefaultPolicy().setRaceMaxCandidates(2);
+        policy.getDefaultPolicy().setAllowFallback(false);
+        AiChatService svc = new AiChatService(registry, router, new ObjectMapper(), policy);
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("S");
+        req.setTenantId("t");
+        req.setUserId("u");
+        req.setMessages(List.of(new ChatMessage("user", "hi")));
+        req.setStream(false);
+
+        assertThatThrownBy(() -> svc.chat(req).join())
+                .hasCauseInstanceOf(RuntimeException.class)
+                .hasRootCauseMessage("fail-first");
+        assertThat(thirdRouteCalls.get()).isZero();
+    }
+
+    @Test
+    void nonStreaming_fastestWins_respects_raceCandidateLimit() {
+        AiRoutingProperties rp = new AiRoutingProperties();
+        rp.setRoutes(Map.of("S", "a1:m1"));
+        rp.setChains(Map.of("S", List.of("a1:m1", "a2:m2")));
+        ModelRouter router = new ModelRouter(rp);
+
+        AtomicInteger secondRouteCalls = new AtomicInteger();
+        ProviderRegistry registry = new ProviderRegistry(
+                Map.of(
+                        "a1", delayedSuccessClient(responseWithModel("m1"), 50, new CountDownLatch(0)),
+                        "a2", successClient(responseWithModel("m2"), secondRouteCalls)
+                ),
+                Map.of("a1", "openai-compat", "a2", "openai-compat")
+        );
+
+        AiPolicyProperties policy = new AiPolicyProperties();
+        policy.getDefaultPolicy().setRoutingMode(AiPolicyProperties.Policy.ROUTING_MODE_FASTEST_WINS);
+        policy.getDefaultPolicy().setRaceMaxCandidates(1);
+        AiChatService svc = new AiChatService(registry, router, new ObjectMapper(), policy);
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("S");
+        req.setTenantId("t");
+        req.setUserId("u");
+        req.setMessages(List.of(new ChatMessage("user", "hi")));
+        req.setStream(false);
+
+        ChatResponse res = svc.chat(req).join();
+        assertThat(res.getMetadata().getModel()).isEqualTo("m1");
+        assertThat(secondRouteCalls.get()).isZero();
+    }
+
+    @Test
+    void nonStreaming_fastestWins_retries_each_race_candidate_before_sequentialFallback() {
+        AiRoutingProperties rp = new AiRoutingProperties();
+        rp.setRoutes(Map.of("S", "a1:m1"));
+        rp.setChains(Map.of("S", List.of("a1:m1", "a2:m2", "a3:m3")));
+        ModelRouter router = new ModelRouter(rp);
+
+        AtomicInteger firstRouteCalls = new AtomicInteger();
+        AtomicInteger secondRouteCalls = new AtomicInteger();
+        AtomicInteger thirdRouteCalls = new AtomicInteger();
+        ProviderRegistry registry = new ProviderRegistry(
+                Map.of(
+                        "a1", alwaysOverloadedClient(firstRouteCalls),
+                        "a2", alwaysOverloadedClient(secondRouteCalls),
+                        "a3", successClient(responseWithModel("m3"), thirdRouteCalls)
+                ),
+                Map.of("a1", "openai-compat", "a2", "openai-compat", "a3", "openai-compat")
+        );
+
+        AiPolicyProperties policy = new AiPolicyProperties();
+        policy.getDefaultPolicy().setRoutingMode(AiPolicyProperties.Policy.ROUTING_MODE_FASTEST_WINS);
+        policy.getDefaultPolicy().setRaceMaxCandidates(2);
+        policy.getDefaultPolicy().setPerRouteMaxAttempts(2);
+        AiChatService svc = new AiChatService(registry, router, new ObjectMapper(), policy);
+
+        ChatRequest req = new ChatRequest();
+        req.setScene("S");
+        req.setTenantId("t");
+        req.setUserId("u");
+        req.setMessages(List.of(new ChatMessage("user", "hi")));
+        req.setStream(false);
+
+        ChatResponse res = svc.chat(req).join();
+        assertThat(res.getMetadata().getModel()).isEqualTo("m3");
+        assertThat(firstRouteCalls.get()).isEqualTo(2);
+        assertThat(secondRouteCalls.get()).isEqualTo(2);
+        assertThat(thirdRouteCalls.get()).isEqualTo(1);
+    }
+
+    @Test
     void nonStreaming_wraps_provider_overloaded_after_retries_exhausted() {
         AiRoutingProperties rp = new AiRoutingProperties();
         rp.setRoutes(Map.of("S", "a1:m1"));
