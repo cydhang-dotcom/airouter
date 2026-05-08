@@ -1,0 +1,56 @@
+{
+  "caseId": "enterprise_accounting",
+  "caseTitle": "企业代账服务",
+  "model": "kimi-k2-0905-preview",
+  "round": 1,
+  "elapsedMs": 8868,
+  "contentRaw": "{\"suggestedScope\":\"代理记账，税务服务，财务咨询，市场主体登记注册代理，商务代理代办服务，企业管理咨询，信息咨询服务（不含许可类信息咨询服务），办公服务\",\"needLicense\":\"yes\",\"licenseDetail\":\"《代理记账许可证书》\",\"hasSensitiveTypes\":\"no\",\"sensitiveTypes\":[],\"otherSensitiveType\":\"\"}",
+  "review": {
+    "semanticPass": true,
+    "formatPass": true,
+    "semanticIssues": [],
+    "formatIssues": []
+  }
+}
+{
+  "caseId": "enterprise_accounting",
+  "caseTitle": "企业代账服务",
+  "model": "kimi-k2-0905-preview",
+  "round": 2,
+  "elapsedMs": 4749,
+  "contentRaw": "{\"suggestedScope\":\"代理记账,税务服务,财务咨询,市场主体登记注册代理,商务代理代办服务,企业管理咨询,信息咨询服务（不含许可类信息咨询服务）\",\"needLicense\":\"yes\",\"licenseDetail\":\"《代理记账许可证书》\",\"hasSensitiveTypes\":\"no\",\"sensitiveTypes\":[],\"otherSensitiveType\":\"\"}",
+  "review": {
+    "semanticPass": true,
+    "formatPass": true,
+    "semanticIssues": [],
+    "formatIssues": []
+  }
+}
+{
+  "caseId": "enterprise_accounting",
+  "caseTitle": "企业代账服务",
+  "model": "kimi-k2-turbo-preview",
+  "round": 1,
+  "elapsedMs": 1298,
+  "contentRaw": "{\"suggestedScope\":\"代理记账，税务服务，财务咨询，市场主体登记注册代理，商务代理代办服务，企业管理咨询，信息咨询服务（不含许可类信息咨询服务），办公服务\",\"needLicense\":\"yes\",\"licenseDetail\":\"《代理记账许可证书》\",\"hasSensitiveTypes\":\"no\",\"sensitiveTypes\":[],\"otherSensitiveType\":\"\"}",
+  "review": {
+    "semanticPass": true,
+    "formatPass": true,
+    "semanticIssues": [],
+    "formatIssues": []
+  }
+}
+{
+  "caseId": "enterprise_accounting",
+  "caseTitle": "企业代账服务",
+  "model": "kimi-k2-turbo-preview",
+  "round": 2,
+  "elapsedMs": 1168,
+  "contentRaw": "{\"suggestedScope\":\"代理记账,税务服务,财务咨询,市场主体登记注册代理,商务代理代办服务,企业管理咨询,信息咨询服务（不含许可类信息咨询服务）,办公服务\",\"needLicense\":\"yes\",\"licenseDetail\":\"《代理记账许可证书》\",\"hasSensitiveTypes\":\"no\",\"sensitiveTypes\":[],\"otherSensitiveType\":\"\"}",
+  "review": {
+    "semanticPass": true,
+    "formatPass": true,
+    "semanticIssues": [],
+    "formatIssues": []
+  }
+}
